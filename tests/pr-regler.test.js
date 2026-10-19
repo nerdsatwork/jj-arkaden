@@ -28,9 +28,11 @@ test("robotten merger et nyt spil", () => {
   assert.equal(v.slug, "stjerneregn");
 });
 
-test("robotten merger et nyt spil fra en fork", () => {
-  const fraFork = pr("spil", { head: { ref: "spil", repo: { full_name: "nogen/arkaden" } } });
-  assert.equal(vurder({ pr: fraFork, filer: [fil("games/ny/game.json")], findesPaaMain: false, repo: REPO }).flet, true);
+test("robotten merger aldrig et spil fra en fork, det godkender en maintainer", () => {
+  const fraFork = pr("indsend/ny", { head: { ref: "indsend/ny", repo: { full_name: "nogen/jj-arkaden" } } });
+  assert.equal(vurder({ pr: fraFork, filer: [fil("games/ny/game.json")], findesPaaMain: false, repo: REPO }).flet, false);
+  // En branch i repoet, der ikke er indsend/<slug>, merges heller ikke af sig selv.
+  assert.equal(vurder({ pr: pr("spil"), filer: [fil("games/ny/game.json")], findesPaaMain: false, repo: REPO }).flet, false);
 });
 
 test("robotten merger en opdatering fra indsend/<slug>, men ikke fra en anden branch", () => {

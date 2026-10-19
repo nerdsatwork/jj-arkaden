@@ -43,7 +43,7 @@ games/<dit-spil>/
 
 **Uden for kurset:** fork repoet, og send en pull request fra din fork. Skillen `arkaden-udgiv` (i `udgiv/`) eller prompten i `CONTRIBUTING.md` lader Claude tage alle trinene.
 
-Begge veje: består robottens tjek, og rører pull requesten kun dit spils mappe, merges den af sig selv, og spillet står i hallen få minutter efter. Detaljerne står i `CONTRIBUTING.md`.
+Via connectoren: består robottens tjek, merges pull requesten af sig selv, og spillet står i hallen få minutter efter. Via en fork: en maintainer kigger spillet igennem og merger det i hånden, fordi et spil er kode, der kører på siden for alle. Detaljerne står i `CONTRIBUTING.md`.
 
 ## Kommandoer
 

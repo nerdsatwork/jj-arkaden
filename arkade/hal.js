@@ -284,7 +284,7 @@
       ["Byg dit spil", "Bed Claude bygge et spil ud fra games/_skabelon. Claude giver det sin egen mappe, opkaldt efter spillets navn, fx games/stjerneregn."],
       ["Spil det lokalt", "Kør npm start, og åbn spillet i spilhallen. npm test -- <dit-spil> tester reglerne."],
       ["Læg det i Arkaden", "På kurset: sig \"Læg mit spil i Arkaden\" til Claude. Ellers: fork repoet, og send en pull request (se CONTRIBUTING.md)."],
-      ["Se det i hallen", "Består robottens tjek, merges din pull request af sig selv. Få minutter efter står spillet i spilhallen for alle."],
+      ["Se det i hallen", "På kurset: består robottens tjek, merges dit spil af sig selv og står i spilhallen få minutter efter. Fra en fork: en maintainer kigger spillet igennem først, fordi det er kode, der kører for alle."],
     ];
     const trae = el(
       "pre",
@@ -320,7 +320,7 @@
             el("li", { text: "Din pull request ændrer kun filer i games/<dit-spil>/, og mappenavnet er ikke taget." }),
             el("li", { text: "game.json er gyldig: titel og en kort beskrivelse, og dit navn, hvis du vil have det på." }),
             el("li", { text: "Dine tests består (npm test -- <dit-spil>)." }),
-            el("li", { text: "Er alt grønt, merger robotten din pull request og lægger spilhallen på GitHub Pages." }),
+            el("li", { text: "Er alt grønt, merger robotten spil fra kurset og lægger spilhallen på GitHub Pages. Spil fra en fork merger en maintainer i hånden." }),
           ),
         ),
       ),

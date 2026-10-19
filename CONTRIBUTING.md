@@ -1,6 +1,6 @@
 # Læg dit spil i Arkaden
 
-Arkaden er et åbent repo. Dit spil kommer i spilhallen, når din pull request er merget. Består robottens tjek, og rører din pull request kun dit spils egen mappe, merges den af sig selv, og spillet står i hallen få minutter efter.
+Arkaden er et åbent repo. Dit spil kommer i spilhallen, når din pull request er merget. Kommer den fra Arkaden-værktøjet på kurset, og består robottens tjek, merges den af sig selv, og spillet står i hallen få minutter efter. Kommer den fra en fork, kigger en maintainer spillet igennem og merger det i hånden. Et spil er kode, der kører på siden for alle, så spil udefra bliver altid set af et menneske først.
 
 Hvert spil bor i sin egen mappe `games/<dit-spil>/`. Mappenavnet er spillets id: små bogstaver, tal og bindestreger, lavet ud fra spillets navn, fx `games/stjerneregn`. Det skal være unikt, så to spil aldrig overskriver hinanden. Lad Claude vælge det.
 
@@ -39,7 +39,7 @@ Jeg vil lægge mit spil i games/[dit-spil] i Arkaden. Arkaden er det offentlige 
 7. Kør node scripts/tjek-pr.js upstream/main i forken. Det er det samme tjek, som GitHub kører på min pull request. Det skal ende med "✓ Klar".
 8. Commit med beskeden "Nyt spil: [titel fra game.json]", og push branchen til min fork.
 9. Åbn en pull request mod nerdsatwork/jj-arkaden main. Udfyld PR-skabelonen fra .github/pull_request_template.md: mappe, titel, én sætning om spillet, og sæt kryds ved de punkter i tjeklisten, du har tjekket. Lad billede-feltet stå tomt.
-10. Giv mig linket til pull requesten, og fortæl mig, hvad der sker nu: robotten tjekker den, og er tjekket grønt, merges den af sig selv, og spillet står i spilhallen få minutter efter.
+10. Giv mig linket til pull requesten, og fortæl mig, hvad der sker nu: robotten tjekker den, og er tjekket grønt, kigger en maintainer spillet igennem og merger det. Så står spillet i spilhallen.
 
 Pull requesten viser den GitHub-konto, jeg er logget ind med. Navnet i spilhallen kommer kun fra game.json. Skriv ikke andet personligt nogen steder.
 ```
@@ -57,7 +57,7 @@ Når du sender en pull request, kører GitHub `npm run tjek-pr`. Den består, n�
 
 Kør det selv først: `npm run tjek-pr`.
 
-Er tjekket grønt, merger robotten (`.github/workflows/auto-merge.yml`) din pull request med squash, bygger spillisten og lægger spilhallen på GitHub Pages. Robotten merger aldrig noget uden for `games/`.
+Er tjekket grønt, og kommer pull requesten fra Arkaden-værktøjet (branchen `indsend/<dit-spil>` i Arkaden selv), merger robotten (`.github/workflows/auto-merge.yml`) den med squash, bygger spillisten og lægger spilhallen på GitHub Pages. En pull request fra en fork merger robotten aldrig: den venter på en maintainer. Robotten merger heller aldrig noget uden for `games/`.
 
 ## Husregler
 

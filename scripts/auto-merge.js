@@ -2,7 +2,10 @@
 // Kaldes af .github/workflows/auto-merge.yml. Kører koden fra main, aldrig
 // PR'ens egen kode, og tjekker reglerne igen ud fra GitHubs liste over filer:
 //   - PR'en rører kun én mappe games/<slug>/ (aldrig skabelonen eller manifestet)
-//   - mappen er ny, eller PR'en kommer fra branchen indsend/<slug> i repoet selv
+//   - PR'en kommer fra branchen indsend/<slug> i repoet selv, altså fra
+//     Arkaden-værktøjet (kursister med en holdkode). En PR fra en fork merges
+//     aldrig automatisk: et spil er JavaScript på vores side, og et statisk
+//     tjek kan snydes, så en maintainer godkender spil udefra i hånden.
 //   - spillets game.json slettes ikke
 //   - PR'en er ikke en kladde, går mod main, og hovedet er det, tjekket kørte på
 // Alt andet (fx en ændring af hallen) venter på en maintainer.
@@ -27,6 +30,10 @@ function vurder({ pr, filer, findesPaaMain, repo }) {
     return { flet: false, grund: `games/${slug} slettes. Det kræver en maintainer` };
   }
   const fraFork = !pr.head.repo || pr.head.repo.full_name !== repo;
+  if (fraFork) return { flet: false, grund: "PR'en kommer fra en fork. En maintainer godkender spil udefra i hånden" };
+  if (pr.head.ref !== `indsend/${slug}`) {
+    return { flet: false, grund: `PR'en kommer ikke fra indsend/${slug}. En maintainer kigger på den` };
+  }
   if (findesPaaMain && !maaOpdatere(slug, { gren: pr.head.ref, fraFork })) {
     return { flet: false, grund: `games/${slug} findes allerede, og PR'en kommer ikke fra indsend/${slug}` };
   }
