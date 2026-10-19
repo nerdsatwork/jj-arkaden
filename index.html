@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arkaden: spilhallen</title>
+  <meta name="description" content="En lille spilhal i browseren. Alle spil er gratis og bygget af kursister. Hvert spil kom ind med en pull request.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 fill=%22%23161515%22/%3E%3Crect x=%2210%22 y=%2210%22 width=%2212%22 height=%2212%22 fill=%22%23e63530%22/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Raleway:wght@400;600;700&family=Silkscreen:wght@400;700&display=swap">
+  <link rel="stylesheet" href="arkade/hal.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-indre">
+      <a class="logo" href="#/">Arkaden</a>
+      <nav class="nav" aria-label="Hovedmenu">
+        <a href="#/" data-nav="hal">Spilhallen</a>
+        <a href="#/alle" data-nav="alle">Alle spil</a>
+        <a href="#/laeg-dit-spil" data-nav="laeg">Læg dit spil i Arkaden</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="visning">
+    <noscript><p class="besked">Arkaden kræver JavaScript.</p></noscript>
+  </main>
+
+  <footer>
+    Arkaden er et åbent repo, og alle spil er gratis. Et spil kommer i spilhallen, når dets pull request er merget.
+    Se <code>CONTRIBUTING.md</code>. Ønskelisten ligger i <code>backlog.md</code>.
+  </footer>
+
+  <section class="scene" id="scene" hidden aria-label="Spillet kører">
+    <div class="scene-top">
+      <button class="tilbage" id="tilbage" type="button">← Spilhallen<kbd>Esc</kbd></button>
+      <h2 id="scene-titel"></h2>
+      <dl class="scene-info" id="scene-info" aria-live="polite"></dl>
+    </div>
+    <div class="scene-ramme" id="scene-ramme"></div>
+  </section>
+
+  <!-- Spillisten laves af npm run games. Mangler den, viser spilhallen en besked. -->
+  <script src="games/manifest.js"></script>
+  <script src="arkade/hal.js"></script>
+</body>
+</html>

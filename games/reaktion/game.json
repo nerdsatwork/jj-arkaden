@@ -1,0 +1,10 @@
+{
+  "titel": "Reaktion",
+  "forfatter": "Jonas",
+  "beskrivelse": "Hvor hurtig er du? Vent på det grønne lys, og tryk. Fem runder, ét gennemsnit.",
+  "type": "action",
+  "tags": ["reflekser", "kort", "en spiller"],
+  "cover": "cover.svg",
+  "styring": "Mellemrum, Enter eller klik",
+  "dato": "2026-10-19"
+}

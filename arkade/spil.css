@@ -1,0 +1,38 @@
+/* Fælles ramme for spil i Arkaden: mørk baggrund, canvas centreret og skaleret. */
+@import url("https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap");
+html.arkade-spil,
+html.arkade-spil body {
+  margin: 0;
+  height: 100%;
+  background: #161515;
+  overflow: hidden;
+}
+
+html.arkade-spil body {
+  display: grid;
+  place-items: center;
+}
+
+.arkade-canvas {
+  display: block;
+  width: min(100vw, calc(100vh * 1.6));
+  aspect-ratio: 8 / 5;
+  height: auto;
+  image-rendering: auto;
+  outline: none;
+  cursor: pointer;
+}
+
+.arkade-canvas:focus-visible {
+  outline: 2px solid #e63530;
+  outline-offset: -2px;
+}
+
+.arkade-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

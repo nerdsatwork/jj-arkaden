@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <pattern id="scan" width="6" height="6" patternUnits="userSpaceOnUse">
+      <rect width="6" height="2" fill="#ffffff" fill-opacity="0.04"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="720" fill="#141b4d"/>
+  <!-- Det grønne lys -->
+  <circle cx="900" cy="340" r="200" fill="#2f9e44"/>
+  <circle cx="900" cy="340" r="200" fill="none" stroke="#ffd43b" stroke-width="10"/>
+  <text x="900" y="390" text-anchor="middle" font-family="Silkscreen, ui-monospace, Menlo, Consolas, monospace" font-weight="700" font-size="140" fill="#ffffff">NU!</text>
+  <g font-family="Silkscreen, ui-monospace, Menlo, Consolas, monospace" font-weight="700" fill="#ffd43b">
+    <text x="96" y="290" font-size="116">REAK</text>
+    <text x="96" y="410" font-size="116">TION</text>
+  </g>
+  <text x="100" y="490" font-family="ui-monospace, Menlo, Consolas, monospace" font-weight="700" font-size="40" fill="#ffffff">0,213 s</text>
+  <g>
+    <rect x="100" y="560" width="26" height="26" fill="#ffd43b"/>
+    <rect x="144" y="560" width="26" height="26" fill="#ffd43b"/>
+    <rect x="188" y="560" width="26" height="26" fill="#ffd43b"/>
+    <rect x="232" y="560" width="26" height="26" fill="#ffffff"/>
+    <rect x="276" y="560" width="26" height="26" fill="#f76707"/>
+  </g>
+  <rect width="1280" height="720" fill="url(#scan)"/>
+</svg>

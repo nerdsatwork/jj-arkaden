@@ -1,0 +1,29 @@
+# Tjekker hver pull request: kun én spilmappe, et nyt mappenavn (eller en
+# opdatering fra branchen indsend/<slug>), gyldig game.json, og spillets tests
+# består. Kører med læseadgang, så PR'er fra forks er sikre. Er tjekket grønt,
+# merger auto-merge.yml et spil-PR af sig selv.
+name: Tjek pull request
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tjek:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tjek spillet
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          FRA_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: node scripts/tjek-pr.js "origin/$BASE_REF"

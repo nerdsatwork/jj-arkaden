@@ -1,0 +1,45 @@
+# Udgiver Arkaden på GitHub Pages ved hvert push til main: kører testene,
+# bygger spillisten (games/manifest.js) ud fra mapperne og lægger hallen online.
+# Kræver: Settings > Pages > Source: GitHub Actions.
+name: Udgiv spilhallen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  udgiv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - name: Byg spillisten
+        run: node scripts/games.js --streng
+      - name: Saml siden
+        run: |
+          mkdir _site
+          cp -r index.html arkade games _site/
+          find _site/games -name "*.test.js" -delete
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

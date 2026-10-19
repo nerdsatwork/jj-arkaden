@@ -1,0 +1,17 @@
+{
+  "name": "arkaden",
+  "version": "0.1.0",
+  "private": true,
+  "description": "En lille spilhal i browseren. Hvert spil bor i sin egen mappe i games/ og kommer ind med en pull request.",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/server.js",
+    "games": "node scripts/games.js",
+    "test": "node scripts/test.js",
+    "lint": "node scripts/lint.js",
+    "tjek-pr": "node scripts/tjek-pr.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

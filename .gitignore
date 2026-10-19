@@ -1,0 +1,14 @@
+node_modules/
+
+# Laves af npm run games (og af GitHub Actions ved udgivelse)
+games/manifest.json
+games/manifest.js
+
+# Playwright, hvis Claude installerer det
+test-results/
+playwright-report/
+
+.DS_Store
+Thumbs.db
+*.log
+.env

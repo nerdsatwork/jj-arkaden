@@ -1,0 +1,54 @@
+# Merger et spil-PR af sig selv, når "Tjek pull request" er grøn, og PR'en kun
+# rører én mappe games/<slug>/. Alt uden for games/ merges aldrig herfra.
+#
+# Sikkerhed: workflowet kører fra main og tjekker main ud, aldrig PR'ens kode.
+# scripts/auto-merge.js tjekker reglerne igen ud fra GitHubs liste over filer,
+# så en PR, der ændrer selve tjekket, aldrig merges af robotten.
+#
+# Kræver på GitHub:
+#   - Ruleset på main: kræv statustjekket "tjek", men INGEN godkendende review
+#     (ellers må GITHUB_TOKEN ikke merge). Tillad squash merge.
+#
+# En merge lavet med GITHUB_TOKEN starter ikke andre workflows af sig selv, så
+# udgivelsen startes bagefter med workflow_dispatch.
+name: Merge spil automatisk
+
+on:
+  workflow_run:
+    workflows: ["Tjek pull request"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: auto-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Merge, hvis det er et spil-PR
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node scripts/auto-merge.js
+      - name: Udgiv spilhallen
+        if: steps.merge.outputs.merget == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run udgiv.yml --repo "${{ github.repository }}" --ref main
