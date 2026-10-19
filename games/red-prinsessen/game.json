@@ -1,0 +1,13 @@
+{
+  "titel": "Red Prinsessen",
+  "beskrivelse": "Hop gennem skov og kløft, saml blomster, og besejr dragen for at redde prinsessen.",
+  "type": "klassiker",
+  "tags": [
+    "platform",
+    "eventyr",
+    "grundkursus"
+  ],
+  "cover": "cover.png",
+  "styring": "Piletaster, mellemrum og X",
+  "dato": "2026-10-19"
+}

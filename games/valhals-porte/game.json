@@ -1,0 +1,13 @@
+{
+  "titel": "Valhals Porte",
+  "beskrivelse": "Nordisk spydkamp gennem tre porte med gudegaver, til Fenrir venter for enden.",
+  "type": "action",
+  "tags": [
+    "kamp",
+    "nordisk",
+    "grundkursus"
+  ],
+  "cover": "cover.png",
+  "styring": "WASD og mus",
+  "dato": "2026-10-19"
+}

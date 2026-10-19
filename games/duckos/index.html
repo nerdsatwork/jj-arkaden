@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DuckOS 0.1 (Ælling)</title>
+<style>
+/* ============================================================
+   DuckOS — designtokens
+   ============================================================ */
+:root{
+  --pond:        #123a4a;
+  --pond-deep:   #071d28;
+  --pond-light:  #1f6b7d;
+  --beak:        #f5a623;
+  --beak-deep:   #d8791a;
+  --feather:     #fbf7ee;
+  --feather-dim: #e8e0d0;
+  --ink:         #17252c;
+  --ink-soft:    #5b6f78;
+  --danger:      #e5533d;
+  --ok:          #4caf7d;
+
+  --win-radius: 14px;
+  --bar-h: 52px;
+
+  --shadow-rest:  0 6px 18px rgba(0,0,0,.28);
+  --shadow-float: 0 22px 60px rgba(0,0,0,.48), 0 4px 12px rgba(0,0,0,.3);
+
+  --duckify: 0;              /* 0..1 — hvor meget skrivebordet er overtaget af ænder */
+  --font: "Segoe UI", -apple-system, system-ui, "Helvetica Neue", sans-serif;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  font-family:var(--font);
+  color:var(--ink);
+  background:var(--pond-deep);
+  overflow:hidden;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+button{ font-family:inherit; cursor:pointer; }
+
+/* ============================================================
+   Skrivebord
+   ============================================================ */
+#desktop{
+  position:fixed; inset:0 0 var(--bar-h) 0;
+  overflow:hidden;
+  background:
+    radial-gradient(1200px 700px at 18% 12%, var(--pond-light), transparent 60%),
+    radial-gradient(900px 620px at 82% 82%, #2a7f6a, transparent 58%),
+    linear-gradient(160deg, var(--pond) 0%, var(--pond-deep) 100%);
+  cursor:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><path d="M15 3 L15 16" stroke="%23d8791a" stroke-width="3" stroke-linecap="round"/><path d="M15 15 L5 26 L25 26 Z" fill="%23f5a623" stroke="%23c96c12" stroke-width="1.5" stroke-linejoin="round"/></svg>') 15 3, auto;
+}
+/* drivende "dampskyer" */
+#desktop::before{
+  content:""; position:absolute; inset:-25%;
+  background:
+    radial-gradient(420px 300px at 20% 30%, rgba(255,255,255,.075), transparent 65%),
+    radial-gradient(520px 340px at 70% 65%, rgba(245,166,35,.09), transparent 65%),
+    radial-gradient(380px 260px at 45% 85%, rgba(255,255,255,.05), transparent 65%);
+  animation:drift 64s ease-in-out infinite alternate;
+  pointer-events:none;
+}
+/* vandkrusninger */
+#desktop::after{
+  content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+  background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><g fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1.2" stroke-linecap="round"><path d="M10 20 q10 -7 20 0 q10 7 20 0"/><path d="M92 55 q10 -7 20 0 q10 7 20 0"/><path d="M50 74 q9 -6 18 0"/></g></svg>');
+}
+/* and-overtagelse af baggrunden */
+#duckify-layer{
+  position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(900px 700px at 50% 60%, rgba(245,166,35,.55), rgba(216,121,26,.25) 70%, transparent);
+  opacity:var(--duckify); transition:opacity 1.4s ease;
+}
+@keyframes drift{
+  from{ transform:translate3d(-3%,-2%,0) scale(1.04); }
+  to  { transform:translate3d(4%,3%,0) scale(1.1); }
+}
+
+/* --- skrivebordsikoner --- */
+#icons{
+  position:absolute; inset:16px auto 16px 16px;
+  display:grid; grid-auto-flow:column;
+  grid-template-rows:repeat(auto-fill, 106px);
+  gap:6px; align-content:start;
+}
+.icon{
+  width:96px; padding:10px 6px 8px; border:0; background:transparent; border-radius:10px;
+  display:flex; flex-direction:column; align-items:center; gap:7px;
+  color:#fff; font-size:12px; line-height:1.25; text-align:center;
+  text-shadow:0 1px 4px rgba(0,0,0,.7);
+  transition:background .15s, transform .15s;
+  opacity:0;
+}
+.booted .icon{ animation:popIn .45s cubic-bezier(.2,1.4,.5,1) forwards; animation-delay:calc(var(--i) * 45ms); }
+@keyframes popIn{ from{opacity:0; transform:translateY(14px) scale(.85);} to{opacity:1; transform:none;} }
+.icon:hover{ background:rgba(255,255,255,.14); transform:translateY(-3px); }
+.icon.selected{ background:rgba(245,166,35,.32); outline:1px solid rgba(255,255,255,.4); }
+.icon .glyph{ width:46px; height:46px; display:grid; place-items:center; font-size:30px;
+  filter:drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+.icon .glyph svg{ width:44px; height:44px; }
+
+/* ============================================================
+   Ænder
+   ============================================================ */
+#duck-layer{ position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:5; }
+.duck{ position:absolute; will-change:transform; }
+.duck svg{ display:block; filter:drop-shadow(0 4px 8px rgba(0,0,0,.4)); }
+.duck .bob{ display:block; animation:bob .42s ease-in-out infinite; }
+.duck.flip{ transform:scaleX(-1); }
+.duck.stander{ pointer-events:auto; cursor:pointer; }
+.duck.stander:active .bob{ animation-duration:.18s; }
+@keyframes bob{ 0%,100%{ transform:translateY(0) rotate(-3.5deg);} 50%{ transform:translateY(-5px) rotate(3.5deg);} }
+@keyframes walkAcross{ from{ transform:translateX(var(--from)); } to{ transform:translateX(var(--to)); } }
+@keyframes duckFall{
+  from{ transform:translateY(-90px) rotate(0deg); opacity:0; }
+  8%  { opacity:1; }
+  to  { transform:translateY(var(--fall)) rotate(var(--spin)); opacity:1; }
+}
+.speech{
+  position:absolute; left:50%; top:-26px; transform:translateX(-50%);
+  background:var(--feather); color:var(--ink); font-size:12px; font-weight:700;
+  padding:3px 9px; border-radius:11px; white-space:nowrap;
+  box-shadow:0 3px 8px rgba(0,0,0,.35); animation:puff 1.1s ease forwards;
+}
+@keyframes puff{ 0%{opacity:0; transform:translate(-50%,6px) scale(.7);} 25%{opacity:1; transform:translate(-50%,0) scale(1);} 80%{opacity:1;} 100%{opacity:0; transform:translate(-50%,-10px);} }
+
+/* ============================================================
+   Vinduer
+   ============================================================ */
+#windows{ position:absolute; inset:0; z-index:20; pointer-events:none; }
+.win{
+  position:absolute; top:0; left:0; pointer-events:auto;
+  display:flex; flex-direction:column;
+  background:rgba(251,247,238,.93);
+  backdrop-filter:blur(14px) saturate(1.2);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  border:1px solid rgba(255,255,255,.55);
+  border-radius:var(--win-radius);
+  box-shadow:var(--shadow-rest);
+  overflow:hidden;
+  transition:box-shadow .2s ease;
+  animation:winOpen .28s cubic-bezier(.2,1.2,.4,1);
+}
+@keyframes winOpen{ from{ opacity:0; transform:translate(var(--x),var(--y)) scale(.9); } }
+.win.is-focused{ box-shadow:var(--shadow-float); }
+.win.is-dragging{ box-shadow:var(--shadow-float); }
+.win.is-dragging .win-bar{ cursor:grabbing; }
+.win.closing{ animation:winClose .22s ease forwards; }
+@keyframes winClose{ to{ opacity:0; transform:translate(var(--x),var(--y)) scale(.82) rotate(2.5deg); } }
+.win.minimizing{ animation:winMin .22s ease forwards; }
+@keyframes winMin{ to{ opacity:0; transform:translate(var(--x),calc(var(--y) + 60px)) scale(.7); } }
+.win.wiggle{ animation:wiggle .34s ease; }
+@keyframes wiggle{
+  0%,100%{ transform:translate(var(--x),var(--y)); }
+  25%{ transform:translate(calc(var(--x) - 7px),var(--y)) rotate(-1deg); }
+  75%{ transform:translate(calc(var(--x) + 7px),var(--y)) rotate(1deg); }
+}
+
+.win-bar{
+  height:38px; flex:0 0 38px; display:flex; align-items:center; gap:9px; padding:0 8px 0 12px;
+  background:linear-gradient(180deg, rgba(255,255,255,.8), rgba(232,224,208,.65));
+  border-bottom:1px solid rgba(0,0,0,.09);
+  cursor:grab; touch-action:none;
+}
+.win.is-focused .win-bar{ background:linear-gradient(180deg, var(--beak), var(--beak-deep)); color:#3a2405; border-bottom-color:rgba(0,0,0,.2); }
+.win-bar .bar-icon{ font-size:16px; line-height:1; }
+.win-bar .bar-icon svg{ width:18px; height:18px; display:block; }
+.win-title{ flex:1; font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.win-btns{ display:flex; gap:6px; }
+.wb{ width:15px; height:15px; border-radius:50%; border:1px solid rgba(0,0,0,.22); padding:0;
+  display:grid; place-items:center; font-size:9px; color:rgba(0,0,0,.5); font-weight:900; line-height:1; }
+.wb:hover{ filter:brightness(1.12); transform:scale(1.15); }
+.wb.min{ background:#f2c14e; } .wb.max{ background:var(--ok); } .wb.close{ background:var(--danger); }
+.wb span{ opacity:0; transition:opacity .12s; }
+.win-btns:hover .wb span{ opacity:1; }
+
+.win-body{ flex:1; overflow:auto; position:relative; font-size:13.5px; }
+.win-resize{
+  position:absolute; right:0; bottom:0; width:18px; height:18px; cursor:nwse-resize; touch-action:none;
+  background:linear-gradient(135deg, transparent 48%, rgba(0,0,0,.24) 50%, transparent 52%,
+             transparent 63%, rgba(0,0,0,.24) 65%, transparent 67%);
+}
+.win.maxed .win-resize{ display:none; }
+
+/* generisk indhold */
+.pad{ padding:18px 20px; line-height:1.55; }
+.pad h3{ margin:0 0 8px; font-size:16px; }
+.pad p{ margin:0 0 10px; color:var(--ink-soft); }
+.joke-icon{ font-size:44px; display:block; margin-bottom:10px; }
+.btn{
+  border:1px solid rgba(0,0,0,.16); background:var(--feather); color:var(--ink);
+  padding:7px 14px; border-radius:8px; font-size:13px; font-weight:600;
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 2px 5px rgba(0,0,0,.09);
+}
+.btn:hover{ background:#fff; transform:translateY(-1px); }
+.btn:active{ transform:translateY(1px); }
+.btn.primary{ background:var(--beak); border-color:var(--beak-deep); color:#3a2405; }
+.row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+/* ============================================================
+   Taskbar
+   ============================================================ */
+#taskbar{
+  position:fixed; left:0; right:0; bottom:0; height:var(--bar-h); z-index:60;
+  display:flex; align-items:center; gap:8px; padding:0 10px;
+  background:rgba(7,29,40,.82);
+  backdrop-filter:blur(18px) saturate(1.3);
+  -webkit-backdrop-filter:blur(18px) saturate(1.3);
+  border-top:1px solid rgba(255,255,255,.14);
+  color:#eaf4f7;
+}
+#startbtn{
+  display:flex; align-items:center; gap:8px; height:38px; padding:0 14px 0 10px;
+  border:0; border-radius:9px; background:linear-gradient(180deg,var(--beak),var(--beak-deep));
+  color:#3a2405; font-weight:800; font-size:13px; box-shadow:0 3px 10px rgba(245,166,35,.35);
+}
+#startbtn svg{ width:24px; height:24px; }
+#startbtn:hover{ filter:brightness(1.07); }
+#startbtn.active{ filter:brightness(.9); }
+#tasks{ flex:1; display:flex; gap:6px; overflow:hidden; }
+.task{
+  max-width:190px; height:36px; padding:0 12px; border-radius:8px;
+  border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.07); color:#dcebef;
+  font-size:12.5px; display:flex; align-items:center; gap:7px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.task:hover{ background:rgba(255,255,255,.16); }
+.task.active{ background:rgba(245,166,35,.28); border-color:rgba(245,166,35,.6); color:#fff; }
+.task.mini{ opacity:.55; }
+.tray{ display:flex; align-items:center; gap:10px; }
+.tray button{ background:transparent; border:0; color:#cfe3e8; font-size:17px; padding:4px 6px; border-radius:6px; }
+.tray button:hover{ background:rgba(255,255,255,.12); }
+#clock{ font-variant-numeric:tabular-nums; font-size:13px; font-weight:600; min-width:52px; text-align:right; }
+
+/* --- startmenu --- */
+#startmenu{
+  position:fixed; left:10px; bottom:calc(var(--bar-h) + 8px); width:290px; z-index:70;
+  background:rgba(13,42,55,.9);
+  backdrop-filter:blur(22px) saturate(1.3); -webkit-backdrop-filter:blur(22px) saturate(1.3);
+  border:1px solid rgba(255,255,255,.16); border-radius:14px; padding:10px;
+  box-shadow:0 24px 60px rgba(0,0,0,.6); color:#e9f3f6;
+  transform-origin:bottom left; display:none;
+}
+#startmenu.open{ display:block; animation:menuIn .18s cubic-bezier(.2,1.2,.4,1); }
+@keyframes menuIn{ from{ opacity:0; transform:translateY(12px) scale(.95); } }
+#startmenu .sm-head{ font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8fb3bd; padding:6px 10px 10px; }
+.sm-item{
+  width:100%; display:flex; align-items:center; gap:11px; padding:9px 10px;
+  border:0; background:transparent; color:inherit; border-radius:9px; font-size:13.5px; text-align:left;
+}
+.sm-item:hover{ background:rgba(245,166,35,.22); }
+.sm-item .glyph{ width:22px; text-align:center; font-size:17px; }
+.sm-item .glyph svg{ width:20px; height:20px; vertical-align:middle; }
+.sm-sep{ height:1px; background:rgba(255,255,255,.14); margin:8px 4px; }
+.sm-item.danger:hover{ background:rgba(229,83,61,.3); }
+
+/* ============================================================
+   Notifikationer
+   ============================================================ */
+#notifs{ position:fixed; right:14px; bottom:calc(var(--bar-h) + 14px); z-index:80;
+  display:flex; flex-direction:column-reverse; gap:10px; max-width:330px; }
+.notif{
+  background:rgba(251,247,238,.97); border-left:4px solid var(--beak); border-radius:10px;
+  padding:11px 14px; box-shadow:0 10px 30px rgba(0,0,0,.4);
+  animation:slideIn .3s cubic-bezier(.2,1.2,.4,1);
+}
+.notif.leaving{ animation:slideOut .3s ease forwards; }
+.notif.warn{ border-left-color:var(--danger); }
+.notif b{ display:block; font-size:13px; margin-bottom:2px; }
+.notif span{ font-size:12.5px; color:var(--ink-soft); }
+@keyframes slideIn{ from{ opacity:0; transform:translateX(40px); } }
+@keyframes slideOut{ to{ opacity:0; transform:translateX(40px); height:0; padding:0; margin:0; } }
+
+/* ============================================================
+   Kontekstmenu
+   ============================================================ */
+#ctxmenu{
+  position:fixed; z-index:90; min-width:186px; display:none;
+  background:rgba(13,42,55,.94); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.16); border-radius:10px; padding:6px;
+  box-shadow:0 18px 44px rgba(0,0,0,.55); color:#e9f3f6;
+}
+#ctxmenu.open{ display:block; animation:menuIn .13s ease; }
+#ctxmenu button{ width:100%; text-align:left; padding:8px 11px; border:0; background:transparent;
+  color:inherit; border-radius:7px; font-size:13px; }
+#ctxmenu button:hover{ background:rgba(245,166,35,.25); }
+
+/* ============================================================
+   Bootscreen / nedlukning
+   ============================================================ */
+#boot{
+  position:fixed; inset:0; z-index:200; display:grid; place-items:center;
+  background:radial-gradient(900px 620px at 50% 40%, #14485c, #04131b 75%);
+  color:#eaf4f7; text-align:center;
+}
+#boot.gone{ animation:bootOut .6s ease forwards; }
+@keyframes bootOut{ to{ opacity:0; visibility:hidden; transform:scale(1.06); } }
+.boot-inner{ width:min(440px, 86vw); }
+.boot-logo{ position:relative; width:170px; height:170px; margin:0 auto 22px; display:grid; place-items:center; }
+.boot-logo svg{ width:130px; height:130px; position:relative; animation:breathe 2.6s ease-in-out infinite;
+  filter:drop-shadow(0 8px 24px rgba(245,166,35,.45)); }
+.boot-logo::before{
+  content:""; position:absolute; inset:0; border-radius:50%;
+  background:conic-gradient(from 0deg, transparent, rgba(245,166,35,.55), transparent 55%);
+  animation:spin 3.2s linear infinite; filter:blur(12px);
+}
+@keyframes breathe{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.07);} }
+@keyframes spin{ to{ transform:rotate(360deg); } }
+.boot-title{ font-size:30px; font-weight:800; letter-spacing:.06em; margin-bottom:6px; }
+.boot-title em{ font-style:normal; color:var(--beak); }
+.boot-sub{ font-size:12px; color:#8fb3bd; letter-spacing:.2em; text-transform:uppercase; margin-bottom:28px; }
+#boot-bar{ height:7px; border-radius:99px; background:rgba(255,255,255,.14); overflow:hidden; margin-bottom:12px; }
+#boot-fill{ height:100%; width:0; border-radius:99px;
+  background:linear-gradient(90deg, var(--beak), #ffd479); transition:width .5s cubic-bezier(.4,0,.2,1); }
+#boot-msg{ font-size:12.5px; color:#a9c8d1; min-height:19px; font-family:ui-monospace, Consolas, monospace; }
+#boot-start{ margin-top:6px; font-size:14px; font-weight:700; color:var(--beak); animation:pulse 1.5s ease-in-out infinite; }
+#boot-fs{ margin-top:16px; background:transparent; color:#a9c8d1; border-color:rgba(255,255,255,.25); box-shadow:none; }
+#boot-fs:hover{ background:rgba(255,255,255,.1); color:#fff; }
+#boot.started #boot-fs{ display:none; }
+@keyframes pulse{ 0%,100%{opacity:.45;} 50%{opacity:1;} }
+#flash{ position:fixed; inset:0; background:#fff; z-index:210; opacity:0; pointer-events:none; }
+#flash.go{ animation:flash .5s ease forwards; }
+@keyframes flash{ 0%{opacity:0;} 14%{opacity:.95;} 100%{opacity:0;} }
+
+#shutdown{
+  position:fixed; inset:0; z-index:220; display:none; place-items:center;
+  background:#04131b; color:#cfe3e8; text-align:center; font-size:17px;
+}
+#shutdown.on{ display:grid; animation:slideIn .3s ease; }
+#shutdown .sd-duck{ font-size:58px; display:block; margin-bottom:16px; animation:breathe 2s ease-in-out infinite; }
+
+/* ============================================================
+   App-specifik styling
+   ============================================================ */
+/* Duck-Paint */
+.paint{ display:flex; flex-direction:column; height:100%; }
+.paint-tools{ display:flex; align-items:center; gap:7px; padding:8px 10px; flex-wrap:wrap;
+  background:rgba(232,224,208,.55); border-bottom:1px solid rgba(0,0,0,.08); }
+.swatch{ width:22px; height:22px; border-radius:50%; border:2px solid rgba(255,255,255,.85);
+  box-shadow:0 1px 4px rgba(0,0,0,.28); padding:0; }
+.swatch.on{ outline:2px solid var(--ink); outline-offset:2px; }
+.paint canvas{ flex:1; width:100%; background:#fff; cursor:crosshair; touch-action:none; display:block; }
+
+/* Regnemaskine */
+.calc{ padding:12px; display:flex; flex-direction:column; gap:10px; height:100%; }
+.calc-display{
+  background:#0e2c38; color:#b6f3c9; border-radius:10px; padding:14px 16px; text-align:right;
+  font-family:ui-monospace, Consolas, monospace; font-size:27px; font-weight:700;
+  min-height:60px; display:flex; align-items:center; justify-content:flex-end;
+  overflow:hidden; word-break:break-all; box-shadow:inset 0 2px 10px rgba(0,0,0,.5);
+}
+.calc-display.quack{ color:var(--beak); }
+.calc-grid{ flex:1; display:grid; grid-template-columns:repeat(4,1fr); gap:7px; }
+.calc-grid button{
+  border:1px solid rgba(0,0,0,.12); border-radius:9px; background:var(--feather);
+  font-size:16px; font-weight:600; min-height:40px;
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 2px 4px rgba(0,0,0,.08);
+}
+.calc-grid button:hover{ background:#fff; }
+.calc-grid button:active{ transform:translateY(1px); }
+.calc-grid button.op{ background:var(--beak); border-color:var(--beak-deep); color:#3a2405; }
+.calc-grid button.eq{ background:var(--ok); border-color:#33835a; color:#fff; }
+.calc-grid button.wide{ grid-column:span 2; }
+
+/* QuackGPT */
+.chat{ display:flex; flex-direction:column; height:100%; background:#f3ece0; }
+.chat-log{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.msg{ max-width:82%; padding:9px 13px; border-radius:15px; font-size:13.5px; line-height:1.45;
+  box-shadow:0 1px 3px rgba(0,0,0,.12); white-space:pre-wrap; user-select:text; }
+.msg.bot{ align-self:flex-start; background:#fff; border-bottom-left-radius:5px; }
+.msg.me{ align-self:flex-end; background:var(--beak); color:#3a2405; border-bottom-right-radius:5px; }
+.msg.sys{ align-self:center; background:transparent; color:var(--ink-soft); font-size:11.5px; box-shadow:none; }
+.typing{ display:flex; gap:4px; align-items:center; }
+.typing i{ width:6px; height:6px; border-radius:50%; background:var(--ink-soft); animation:dot 1s infinite; }
+.typing i:nth-child(2){ animation-delay:.16s; } .typing i:nth-child(3){ animation-delay:.32s; }
+@keyframes dot{ 0%,60%,100%{ transform:translateY(0); opacity:.4; } 30%{ transform:translateY(-5px); opacity:1; } }
+.chat-in{ display:flex; gap:8px; padding:10px; background:rgba(232,224,208,.7); border-top:1px solid rgba(0,0,0,.09); }
+.chat-in input{ flex:1; border:1px solid rgba(0,0,0,.16); border-radius:20px; padding:9px 14px;
+  font-size:13.5px; font-family:inherit; background:#fff; user-select:text; }
+.chat-in input:focus{ outline:2px solid var(--beak); outline-offset:-1px; }
+
+/* Filhåndtering */
+.files{ display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:8px; padding:14px; }
+.file{ border:0; background:transparent; border-radius:9px; padding:10px 4px; text-align:center;
+  font-size:11.5px; color:var(--ink); display:flex; flex-direction:column; gap:6px; align-items:center; }
+.file .g{ font-size:30px; }
+.file:hover{ background:rgba(245,166,35,.22); }
+.crumb{ padding:8px 14px; background:rgba(232,224,208,.6); border-bottom:1px solid rgba(0,0,0,.08);
+  font-size:12px; font-family:ui-monospace,Consolas,monospace; color:var(--ink-soft); }
+
+/* Indstillinger */
+.settings{ padding:16px 18px; display:flex; flex-direction:column; gap:16px; }
+.setting label{ display:flex; justify-content:space-between; font-size:12.5px; font-weight:600; margin-bottom:7px; }
+.setting label span{ color:var(--beak-deep); font-variant-numeric:tabular-nums; }
+.setting input[type=range]{ width:100%; accent-color:var(--beak); }
+
+/* Musikafspiller */
+.player{ padding:16px; display:flex; flex-direction:column; gap:14px; align-items:center; height:100%; justify-content:center; }
+.eq{ display:flex; gap:4px; align-items:flex-end; height:72px; }
+.eq i{ width:8px; background:linear-gradient(180deg,var(--beak),var(--beak-deep)); border-radius:3px 3px 0 0;
+  animation:eqb .9s ease-in-out infinite alternate; height:22px; }
+@keyframes eqb{ to{ height:70px; } }
+.track{ text-align:center; } .track b{ font-size:15px; } .track small{ color:var(--ink-soft); }
+.seek{ width:100%; height:5px; background:rgba(0,0,0,.13); border-radius:99px; overflow:hidden; }
+.seek i{ display:block; height:100%; width:34%; background:var(--beak); }
+
+/* Spil-loader */
+.loader{ padding:26px 20px; text-align:center; }
+.loader .bar{ height:9px; background:rgba(0,0,0,.12); border-radius:99px; overflow:hidden; margin:16px 0 8px; }
+.loader .bar i{ display:block; height:100%; background:linear-gradient(90deg,var(--beak),#ffd479);
+  border-radius:99px; transition:width .7s ease; }
+
+/* Om */
+.about{ padding:20px; display:flex; gap:18px; align-items:flex-start; }
+.about svg{ width:72px; height:72px; flex:0 0 auto; }
+.about table{ border-collapse:collapse; font-size:12.5px; }
+.about td{ padding:3px 0; } .about td:first-child{ color:var(--ink-soft); padding-right:16px; }
+
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{ animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="desktop">
+  <div id="duckify-layer"></div>
+  <div id="icons"></div>
+  <div id="duck-layer"></div>
+  <div id="windows"></div>
+</div>
+
+<div id="taskbar">
+  <button id="startbtn" aria-label="Start"></button>
+  <div id="tasks"></div>
+  <div class="tray">
+    <button id="soundbtn" title="Lyd til/fra" aria-label="Lyd til eller fra">🔊</button>
+    <button id="duckbtn" title="Tilkald en and" aria-label="Tilkald en and">🦆</button>
+    <button id="fsbtn" title="Fuldskærm (F11)" aria-label="Fuldskærm">⛶</button>
+    <span id="clock">--:--</span>
+  </div>
+</div>
+
+<nav id="startmenu" aria-label="Startmenu"></nav>
+<div id="ctxmenu" role="menu"></div>
+<div id="notifs" aria-live="polite"></div>
+
+<div id="shutdown"><div><span class="sd-duck">🦆</span><div id="sd-text">Lukker DuckOS ned…</div></div></div>
+
+<div id="boot">
+  <div class="boot-inner">
+    <div class="boot-logo" id="boot-logo"></div>
+    <div class="boot-title">Duck<em>OS</em></div>
+    <div class="boot-sub">version 0.1 · ælling</div>
+    <div id="boot-bar"><div id="boot-fill"></div></div>
+    <div id="boot-msg"></div>
+    <div id="boot-start">Tryk hvor som helst for at starte DuckOS</div>
+    <button id="boot-fs" class="btn" type="button">⛶ Start i fuldskærm</button>
+  </div>
+</div>
+<div id="flash"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   Hjælpere
+   ============================================================ */
+const $  = (s, r = document) => r.querySelector(s);
+const el = (tag, cls, html) => { const n = document.createElement(tag);
+  if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const rnd  = (a, b) => a + Math.random() * (b - a);
+const irnd = (a, b) => Math.floor(rnd(a, b + 1));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/* And-SVG — bruges overalt */
+function duckSVG(size = 64, body = "#fbf7ee", wing = "#e3d9c4") {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true">
+    <ellipse cx="29" cy="42" rx="21" ry="13.5" fill="${body}"/>
+    <path d="M10 38 Q2 31 7 29 Q11 33 16 34 Z" fill="${body}"/>
+    <path d="M40 31 Q38 22 44 20 L50 22 Q46 27 47 33 Z" fill="${body}"/>
+    <circle cx="45" cy="22" r="10.5" fill="${body}"/>
+    <path d="M53.5 20.5 L64 24 L53.5 28 Q52 24 53.5 20.5 Z" fill="#f5a623"/>
+    <path d="M53.5 24.4 L64 24 L53.5 27.2 Z" fill="#d8791a" opacity=".55"/>
+    <circle cx="47.5" cy="19.5" r="2" fill="#17252c"/>
+    <circle cx="48.2" cy="18.8" r=".7" fill="#fff"/>
+    <ellipse cx="27" cy="43" rx="11" ry="7.5" fill="${wing}"/>
+    <path d="M24 50 L22 57 M34 50 L36 57" stroke="#f5a623" stroke-width="2.6" stroke-linecap="round"/>
+  </svg>`;
+}
+
+/* ============================================================
+   Lyd — ren Web Audio-syntese, ingen filer
+   ============================================================ */
+const Sound = {
+  ctx: null,
+  on: (() => { try { return localStorage.getItem("duckos-sound") !== "off"; } catch (e) { return true; } })(),
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.3;
+    this.master.connect(this.ctx.destination);
+  },
+  ok() {
+    if (!this.on || !this.ctx) return false;
+    if (this.ctx.state === "suspended") this.ctx.resume();
+    return true;
+  },
+  env(node, t, peak, dur) {
+    node.gain.setValueAtTime(0.0001, t);
+    node.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+    node.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  },
+  quack(pitch = 1) {
+    if (!this.ok()) return;
+    const t = this.ctx.currentTime, p = pitch * rnd(0.86, 1.18);
+    const osc = this.ctx.createOscillator();
+    const flt = this.ctx.createBiquadFilter();
+    const g   = this.ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(720 * p, t);
+    osc.frequency.exponentialRampToValueAtTime(215 * p, t + 0.13);
+    flt.type = "bandpass"; flt.Q.value = 5.5;
+    flt.frequency.setValueAtTime(1100 * p, t);
+    flt.frequency.exponentialRampToValueAtTime(520 * p, t + 0.13);
+    this.env(g, t, 0.55, 0.17);
+    osc.connect(flt).connect(g).connect(this.master);
+    osc.start(t); osc.stop(t + 0.2);
+  },
+  noise(dur = 0.06) {
+    const n = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = this.ctx.createBufferSource(); src.buffer = buf; return src;
+  },
+  click() {
+    if (!this.ok()) return;
+    const t = this.ctx.currentTime, src = this.noise(0.04), g = this.ctx.createGain();
+    const f = this.ctx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 1600;
+    this.env(g, t, 0.16, 0.05);
+    src.connect(f).connect(g).connect(this.master); src.start(t);
+  },
+  whoosh() {
+    if (!this.ok()) return;
+    const t = this.ctx.currentTime, src = this.noise(0.26), g = this.ctx.createGain();
+    const f = this.ctx.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 1.1;
+    f.frequency.setValueAtTime(380, t);
+    f.frequency.exponentialRampToValueAtTime(2400, t + 0.24);
+    this.env(g, t, 0.14, 0.26);
+    src.connect(f).connect(g).connect(this.master); src.start(t);
+  },
+  error() {
+    if (!this.ok()) return;
+    const t = this.ctx.currentTime;
+    [[196, 0], [185, 0.16]].forEach(([hz, off]) => {
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = "square"; o.frequency.value = hz;
+      this.env(g, t + off, 0.22, 0.24);
+      o.connect(g).connect(this.master); o.start(t + off); o.stop(t + off + 0.3);
+    });
+  },
+  jingle() {
+    if (!this.ok()) return;
+    const t = this.ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((hz, i) => {
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = "triangle"; o.frequency.value = hz;
+      this.env(g, t + i * 0.13, 0.3, 0.38);
+      o.connect(g).connect(this.master); o.start(t + i * 0.13); o.stop(t + i * 0.13 + 0.45);
+    });
+    setTimeout(() => this.quack(1.1), 620);
+  },
+  toggle() {
+    this.on = !this.on;
+    try { localStorage.setItem("duckos-sound", this.on ? "on" : "off"); } catch (e) {}
+    $("#soundbtn").textContent = this.on ? "🔊" : "🔇";
+    if (this.on) this.quack();
+  }
+};
+
+/* ============================================================
+   Notifikationer
+   ============================================================ */
+function notify(title, msg, warn = false) {
+  const n = el("div", "notif" + (warn ? " warn" : ""),
+    `<b>${title}</b><span>${msg}</span>`);
+  $("#notifs").appendChild(n);
+  warn ? Sound.error() : Sound.click();
+  setTimeout(() => {
+    n.classList.add("leaving");
+    n.addEventListener("animationend", () => n.remove(), { once: true });
+  }, 4200);
+}
+
+/* ============================================================
+   Vinduesmanager
+   ============================================================ */
+const WM = {
+  wins: new Map(),
+  z: 100,
+  seq: 0,
+  cascade: 0,
+  focused: null,
+
+  open(appId) {
+    const app = APPS[appId];
+    if (!app) return;
+    for (const [id, w] of this.wins) {
+      if (w.appId === appId) {
+        if (w.minimized) this.restoreMin(id);
+        this.focus(id);
+        w.el.classList.remove("wiggle");
+        void w.el.offsetWidth;
+        w.el.classList.add("wiggle");
+        Sound.quack(1.3);
+        return id;
+      }
+    }
+
+    const id = "w" + (++this.seq);
+    const w = Math.min(app.w || 460, Math.max(300, innerWidth - 40));
+    const h = Math.min(app.h || 340, Math.max(220, innerHeight - 100));
+    const off = (this.cascade++ % 7) * 28;
+    const x = Math.max(12, Math.min(innerWidth - w - 12, 90 + off + rnd(-16, 16)));
+    const y = Math.max(12, Math.min(innerHeight - h - 80, 60 + off));
+
+    const node = el("section", "win");
+    node.dataset.id = id;
+    node.setAttribute("role", "dialog");
+    node.setAttribute("aria-label", app.name);
+    node.style.width = w + "px";
+    node.style.height = h + "px";
+    node.innerHTML = `
+      <header class="win-bar">
+        <span class="bar-icon">${app.icon}</span>
+        <span class="win-title">${app.name}</span>
+        <div class="win-btns">
+          <button class="wb min" aria-label="Minimér"><span>–</span></button>
+          <button class="wb max" aria-label="Maksimér"><span>□</span></button>
+          <button class="wb close" aria-label="Luk"><span>×</span></button>
+        </div>
+      </header>
+      <div class="win-body"></div>
+      <div class="win-resize" aria-hidden="true"></div>`;
+
+    const state = { id, el: node, appId, x, y, w, h, minimized: false, maxed: false, prev: null,
+                    minW: app.minW || 260, minH: app.minH || 160, cleanup: null };
+    this.wins.set(id, state);
+    this.place(state);
+    $("#windows").appendChild(node);
+
+    try { state.cleanup = app.render($(".win-body", node), state) || null; }
+    catch (err) { $(".win-body", node).innerHTML =
+      `<div class="pad"><span class="joke-icon">💥</span><h3>Appen styrtede ned</h3>
+       <p>Anden mistede overblikket. Teknisk detalje: ${String(err.message || err)}</p></div>`; }
+
+    $(".win-bar", node).addEventListener("pointerdown", e => this.startDrag(e, state));
+    $(".win-bar", node).addEventListener("dblclick", e => {
+      if (e.target.closest(".wb")) return;
+      this.toggleMax(id);
+    });
+    $(".win-resize", node).addEventListener("pointerdown", e => this.startResize(e, state));
+    $(".wb.close", node).addEventListener("click", e => { e.stopPropagation(); this.close(id); });
+    $(".wb.min",   node).addEventListener("click", e => { e.stopPropagation(); this.minimize(id); });
+    $(".wb.max",   node).addEventListener("click", e => { e.stopPropagation(); this.toggleMax(id); });
+    node.addEventListener("pointerdown", () => this.focus(id));
+
+    this.focus(id);
+    this.renderTasks();
+    Sound.whoosh();
+    return id;
+  },
+
+  place(s) {
+    s.el.style.setProperty("--x", s.x + "px");
+    s.el.style.setProperty("--y", s.y + "px");
+    s.el.style.transform = `translate(${s.x}px, ${s.y}px)`;
+  },
+
+  focus(id) {
+    const s = this.wins.get(id); if (!s) return;
+    if (this.focused === id && s.el.style.zIndex) return;
+    this.focused = id;
+    s.el.style.zIndex = ++this.z;
+    for (const [i, w] of this.wins) w.el.classList.toggle("is-focused", i === id);
+    this.renderTasks();
+  },
+
+  close(id) {
+    const s = this.wins.get(id); if (!s) return;
+    if (s.cleanup) { try { s.cleanup(); } catch (_) {} }
+    s.el.classList.add("closing");
+    s.el.addEventListener("animationend", () => s.el.remove(), { once: true });
+    this.wins.delete(id);
+    if (this.focused === id) this.focused = null;
+    this.renderTasks();
+    Sound.click();
+    Ducks.onWindowClosed();
+  },
+
+  minimize(id) {
+    const s = this.wins.get(id); if (!s || s.minimized) return;
+    s.minimized = true;
+    s.el.classList.add("minimizing");
+    s.el.addEventListener("animationend", () => {
+      if (s.minimized) s.el.style.visibility = "hidden";
+      s.el.classList.remove("minimizing");
+    }, { once: true });
+    if (this.focused === id) this.focused = null;
+    this.renderTasks();
+    Sound.click();
+  },
+
+  restoreMin(id) {
+    const s = this.wins.get(id); if (!s) return;
+    s.minimized = false;
+    s.el.style.visibility = "";
+    this.focus(id);
+    this.renderTasks();
+  },
+
+  toggleMax(id) {
+    const s = this.wins.get(id); if (!s) return;
+    if (s.maxed) {
+      Object.assign(s, s.prev);
+      s.el.style.width = s.w + "px"; s.el.style.height = s.h + "px";
+      s.maxed = false; s.el.classList.remove("maxed");
+    } else {
+      s.prev = { x: s.x, y: s.y, w: s.w, h: s.h };
+      s.x = 0; s.y = 0;
+      s.el.style.width = innerWidth + "px";
+      s.el.style.height = (innerHeight - 52) + "px";
+      s.maxed = true; s.el.classList.add("maxed");
+    }
+    this.place(s);
+    this.focus(id);
+    Sound.click();
+  },
+
+  toggleTask(id) {
+    const s = this.wins.get(id); if (!s) return;
+    if (s.minimized) this.restoreMin(id);
+    else if (this.focused === id) this.minimize(id);
+    else this.focus(id);
+  },
+
+  startDrag(e, s) {
+    if (e.target.closest(".wb")) return;
+    if (s.maxed) this.toggleMax(s.id);
+    this.focus(s.id);
+    const bar = e.currentTarget;
+    const ox = e.clientX - s.x, oy = e.clientY - s.y;
+    s.el.classList.add("is-dragging");
+    bar.setPointerCapture(e.pointerId);
+    const move = ev => {
+      s.x = Math.max(-(s.w - 120), Math.min(innerWidth - 120, ev.clientX - ox));
+      s.y = Math.max(0, Math.min(innerHeight - 70, ev.clientY - oy));
+      this.place(s);
+    };
+    const up = () => {
+      s.el.classList.remove("is-dragging");
+      bar.removeEventListener("pointermove", move);
+      bar.removeEventListener("pointerup", up);
+      bar.removeEventListener("pointercancel", up);
+    };
+    bar.addEventListener("pointermove", move);
+    bar.addEventListener("pointerup", up);
+    bar.addEventListener("pointercancel", up);
+  },
+
+  startResize(e, s) {
+    e.stopPropagation();
+    this.focus(s.id);
+    const grip = e.currentTarget;
+    const sx = e.clientX, sy = e.clientY, sw = s.w, sh = s.h;
+    grip.setPointerCapture(e.pointerId);
+    const move = ev => {
+      s.w = Math.max(s.minW, Math.min(innerWidth - 20,  sw + ev.clientX - sx));
+      s.h = Math.max(s.minH, Math.min(innerHeight - 20, sh + ev.clientY - sy));
+      s.el.style.width = s.w + "px"; s.el.style.height = s.h + "px";
+    };
+    const up = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", up);
+      grip.removeEventListener("pointercancel", up);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up);
+    grip.addEventListener("pointercancel", up);
+  },
+
+  renderTasks() {
+    const bar = $("#tasks");
+    bar.innerHTML = "";
+    for (const [id, s] of this.wins) {
+      const app = APPS[s.appId];
+      const b = el("button", "task" + (this.focused === id ? " active" : "") + (s.minimized ? " mini" : ""),
+        `<span>${app.icon}</span><span>${app.name}</span>`);
+      b.addEventListener("click", () => this.toggleTask(id));
+      bar.appendChild(b);
+    }
+  }
+};
+
+/* ============================================================
+   And-eskaleringen — det centrale gag
+   ============================================================ */
+const Ducks = {
+  closed: 0,
+  count: 0,
+  MAX: 40,
+  warned: false,
+  helpOffered: false,
+
+  layer: () => $("#duck-layer"),
+  bounds: () => $("#desktop").getBoundingClientRect(),
+
+  make(size) {
+    const d = el("div", "duck");
+    d.innerHTML = `<span class="bob">${duckSVG(size)}</span>`;
+    return d;
+  },
+
+  say(duck, text) {
+    const s = el("div", "speech", text);
+    duck.appendChild(s);
+    s.addEventListener("animationend", () => s.remove(), { once: true });
+  },
+
+  /* vader ind fra en kant, rapper, og vader ud igen */
+  walker() {
+    if (this.count >= this.MAX) return;
+    const b = this.bounds();
+    const size = irnd(38, 62);
+    const fromLeft = Math.random() < 0.5;
+    const d = this.make(size);
+    this.count++;
+    d.style.top = rnd(b.height * 0.25, b.height - size - 30) + "px";
+    d.style.left = "0px";
+    d.style.setProperty("--from", (fromLeft ? -size - 20 : b.width + 20) + "px");
+    d.style.setProperty("--to",   (fromLeft ? b.width + 20 : -size - 20) + "px");
+    if (fromLeft) d.classList.add("flip");
+    const dur = rnd(7, 12);
+    d.style.animation = `walkAcross ${dur}s linear forwards`;
+    this.layer().appendChild(d);
+    setTimeout(() => { Sound.quack(rnd(0.8, 1.3)); this.say(d, pick(["Rap!", "Rap rap.", "Hej.", "Rap?"])); },
+      dur * 300);
+    d.addEventListener("animationend", () => { d.remove(); this.count--; }, { once: true });
+  },
+
+  /* bliver stående på skrivebordet, kan klikkes */
+  stander(x, y) {
+    if (this.count >= this.MAX) return;
+    const b = this.bounds();
+    const size = irnd(40, 58);
+    const d = this.make(size);
+    this.count++;
+    d.classList.add("stander");
+    if (Math.random() < 0.5) d.classList.add("flip");
+    d.style.left = (x ?? rnd(140, Math.max(160, b.width - size - 30))) + "px";
+    d.style.top  = (y ?? rnd(b.height * 0.2, b.height - size - 30)) + "px";
+    d.addEventListener("click", () => {
+      Sound.quack(rnd(0.75, 1.4));
+      this.say(d, pick(["Rap!", "Lad mig være.", "Jeg bor her nu.", "Rap rap rap!", "Nej."]));
+      d.style.left = (parseFloat(d.style.left) + rnd(-14, 14)) + "px";
+    });
+    this.layer().appendChild(d);
+    Sound.quack();
+    return d;
+  },
+
+  /* regner ned og bliver liggende hvor den lander */
+  faller() {
+    if (this.count >= this.MAX) return;
+    const b = this.bounds();
+    const size = irnd(30, 50);
+    const d = this.make(size);
+    this.count++;
+    const landing = rnd(b.height * 0.3, b.height - size - 20);
+    d.style.left = rnd(20, Math.max(40, b.width - size - 20)) + "px";
+    d.style.top = "0px";
+    d.style.setProperty("--fall", landing + "px");
+    d.style.setProperty("--spin", irnd(-25, 25) + "deg");
+    d.style.animation = `duckFall ${rnd(2.4, 4.6)}s cubic-bezier(.4,0,.7,1) forwards`;
+    this.layer().appendChild(d);
+    setTimeout(() => { if (Math.random() < 0.4) Sound.quack(rnd(0.7, 1.5)); }, 1200);
+  },
+
+  onWindowClosed() {
+    this.closed++;
+    const n = this.closed;
+
+    if (n <= 2)      setTimeout(() => this.walker(), 400);
+    else if (n <= 4) setTimeout(() => this.stander(), 400);
+    else if (n <= 6) { setTimeout(() => this.stander(), 300); setTimeout(() => this.walker(), 900); }
+    else {
+      setTimeout(() => this.stander(), 300);
+      this.rain();
+      if (!this.warned) {
+        this.warned = true;
+        notify("⚠️ ADVARSEL", "Andepopulation over grænseværdi. DuckOS anbefaler at du holder op med at lukke vinduer.", true);
+      }
+    }
+
+    if (n >= 12) {
+      document.documentElement.style.setProperty("--duckify", Math.min(0.75, (n - 11) * 0.09));
+      if (!this.helpOffered) {
+        this.helpOffered = true;
+        notify("Systemet reagerer", "Der er tilføjet en ny post i startmenuen.");
+        buildStartMenu();
+      }
+    }
+  },
+
+  rain() {
+    if (this.raining) return;
+    this.raining = true;
+    this.rainTimer = setInterval(() => {
+      if (this.count >= this.MAX) return;
+      this.faller();
+    }, 2600);
+  },
+
+  panic() {
+    for (let i = 0; i < 10; i++) setTimeout(() => this.faller(), i * 120);
+    notify("Hjælp er på vej", "Vi sendte flere ænder. Det var alt vi havde.", true);
+  }
+};
+
+/* ============================================================
+   Apps
+   ============================================================ */
+const APPS = {};
+
+/* -------------------- Duck-Paint (virker) -------------------- */
+APPS.paint = {
+  name: "Duck-Paint", icon: "🎨", w: 540, h: 420, minW: 320, minH: 260,
+  render(body) {
+    body.innerHTML = `<div class="paint">
+      <div class="paint-tools">
+        <div class="row" id="pal"></div>
+        <input type="range" id="size" min="2" max="40" value="7" style="width:92px; accent-color:var(--beak)">
+        <button class="btn" id="stamp">🦆 Andepensel</button>
+        <button class="btn" id="clr">Ryd</button>
+        <button class="btn primary" id="save">Gem</button>
+      </div>
+      <canvas></canvas>
+    </div>`;
+
+    const cv = $("canvas", body), ctx = cv.getContext("2d");
+    const colors = ["#17252c", "#f5a623", "#e5533d", "#4caf7d", "#3c8dbc", "#8e5fbf", "#fbf7ee"];
+    let color = colors[0], width = 7, stamp = false, drawing = false, last = null;
+
+    colors.forEach((c, i) => {
+      const s = el("button", "swatch" + (i === 0 ? " on" : ""));
+      s.style.background = c;
+      s.addEventListener("click", () => {
+        color = c;
+        $("#pal", body).querySelectorAll(".swatch").forEach(x => x.classList.remove("on"));
+        s.classList.add("on");
+        Sound.click();
+      });
+      $("#pal", body).appendChild(s);
+    });
+
+    const fit = () => {
+      const snap = cv.width ? ctx.getImageData(0, 0, cv.width, cv.height) : null;
+      cv.width = cv.clientWidth; cv.height = cv.clientHeight;
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+      if (snap) ctx.putImageData(snap, 0, 0);
+      ctx.lineCap = ctx.lineJoin = "round";
+    };
+    const ro = new ResizeObserver(fit); ro.observe(cv);
+    requestAnimationFrame(fit);
+
+    const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+
+    const stampDuck = p => {
+      const s = width * 2.4;
+      ctx.save(); ctx.translate(p.x - s / 2, p.y - s / 2); ctx.scale(s / 64, s / 64);
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.ellipse(29, 42, 21, 13.5, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(45, 22, 10.5, 0, 7); ctx.fill();
+      ctx.fillStyle = "#f5a623";
+      ctx.beginPath(); ctx.moveTo(53, 20); ctx.lineTo(64, 24); ctx.lineTo(53, 28); ctx.fill();
+      ctx.restore();
+    };
+
+    cv.addEventListener("pointerdown", e => {
+      cv.setPointerCapture(e.pointerId);
+      drawing = true; last = pos(e);
+      if (stamp) { stampDuck(last); Sound.quack(1.5); }
+      else { ctx.strokeStyle = color; ctx.lineWidth = width;
+             ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(last.x + .1, last.y); ctx.stroke(); }
+    });
+    cv.addEventListener("pointermove", e => {
+      if (!drawing) return;
+      const p = pos(e);
+      if (stamp) { if (Math.hypot(p.x - last.x, p.y - last.y) > width * 2.2) { stampDuck(p); last = p; } }
+      else { ctx.strokeStyle = color; ctx.lineWidth = width;
+             ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; }
+    });
+    const stop = () => { drawing = false; };
+    cv.addEventListener("pointerup", stop);
+    cv.addEventListener("pointercancel", stop);
+
+    $("#size", body).addEventListener("input", e => width = +e.target.value);
+    $("#stamp", body).addEventListener("click", e => {
+      stamp = !stamp;
+      e.target.classList.toggle("primary", stamp);
+      e.target.textContent = stamp ? "✏️ Almindelig" : "🦆 Andepensel";
+      Sound.quack(1.2);
+    });
+    $("#clr", body).addEventListener("click", () => {
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+      notify("Duck-Paint", "Lærredet er ryddet. Anden så ingenting.");
+    });
+    $("#save", body).addEventListener("click", () =>
+      notify("Kunne ikke gemme", "Dit værk er for smukt til denne harddisk.", true));
+
+    return () => ro.disconnect();
+  }
+};
+
+/* -------------------- Duck Calculator (virker) -------------------- */
+APPS.calc = {
+  name: "Duck Calculator", icon: "🧮", w: 300, h: 400, minW: 250, minH: 320,
+  render(body) {
+    const keys = [
+      ["C","c"],["±","neg"],["%","pct"],["÷","op"],
+      ["7","n"],["8","n"],["9","n"],["×","op"],
+      ["4","n"],["5","n"],["6","n"],["−","op"],
+      ["1","n"],["2","n"],["3","n"],["+","op"],
+      ["0","n wide"],[",","dot"],["=","eq"]
+    ];
+    body.innerHTML = `<div class="calc">
+      <div class="calc-display">0</div>
+      <div class="calc-grid">${keys.map(([l, k]) =>
+        `<button class="${k.includes("op")?"op":k==="eq"?"eq":""} ${k.includes("wide")?"wide":""}" data-k="${l}">${l}</button>`
+      ).join("")}</div></div>`;
+
+    const disp = $(".calc-display", body);
+    let cur = "0", prev = null, op = null, fresh = true;
+    const show = v => { disp.textContent = String(v).replace(".", ","); };
+
+    const compute = () => {
+      const a = parseFloat(prev), b = parseFloat(cur);
+      if (op === "÷" && b === 0) return "DIV0";
+      const r = op === "+" ? a + b : op === "−" ? a - b : op === "×" ? a * b : a / b;
+      return Math.round(r * 1e10) / 1e10;
+    };
+
+    const finish = r => {
+      if (r === "DIV0") {
+        show("∞");
+        notify("Matematisk andefejl", "Anden dividerede med nul og fløj sin vej.", true);
+        cur = "0"; fresh = true; return;
+      }
+      const txt = String(r);
+      // Gimmick: RAP-glitch før det rigtige svar
+      if (txt.includes("7") || Math.random() < 0.1) {
+        disp.classList.add("quack");
+        show("RAP");
+        Sound.quack(1.25);
+        setTimeout(() => { disp.classList.remove("quack"); show(txt); }, 700);
+      } else show(txt);
+      cur = txt; fresh = true;
+    };
+
+    body.addEventListener("click", e => {
+      const b = e.target.closest("button[data-k]"); if (!b) return;
+      const k = b.dataset.k;
+      Sound.click();
+      if (/[0-9]/.test(k)) { cur = (fresh || cur === "0") ? k : cur + k; fresh = false; show(cur); }
+      else if (k === ",") { if (fresh) { cur = "0."; fresh = false; } else if (!cur.includes(".")) cur += "."; show(cur); }
+      else if (k === "C") { cur = "0"; prev = null; op = null; fresh = true; disp.classList.remove("quack"); show(cur); }
+      else if (k === "±") { cur = String(-parseFloat(cur)); show(cur); }
+      else if (k === "%") { cur = String(parseFloat(cur) / 100); show(cur); }
+      else if (k === "=") { if (op && prev !== null) { finish(compute()); prev = null; op = null; } }
+      else { // operator
+        if (op && prev !== null && !fresh) { const r = compute(); if (r === "DIV0") { finish(r); return; } cur = String(r); show(cur); }
+        prev = cur; op = k; fresh = true;
+      }
+    });
+  }
+};
+
+/* -------------------- QuackGPT (virker) -------------------- */
+APPS.gpt = {
+  name: "QuackGPT", icon: "🤖", w: 440, h: 460, minW: 300, minH: 280,
+  render(body) {
+    body.innerHTML = `<div class="chat">
+      <div class="chat-log"></div>
+      <form class="chat-in"><input type="text" placeholder="Spørg anden om hvad som helst…" autocomplete="off">
+      <button class="btn primary" type="submit">Send</button></form></div>`;
+
+    const log = $(".chat-log", body), input = $("input", body);
+    const POOLS = {
+      question: [
+        "Det spørgsmål ligger uden for min andedam.",
+        "Jeg har konsulteret tre ænder. De var uenige. Svaret er derfor: rap.",
+        "Godt spørgsmål! Jeg ignorerer det.",
+        "Mit svar afhænger af om du har brød med."
+      ],
+      duck: [
+        "Endelig taler vi om det vigtige.",
+        "Ænder er 100 % af mit træningsdatasæt. Spørg videre.",
+        "Ja. And. Korrekt. Du forstår systemet."
+      ],
+      quack: [
+        "Rap.",
+        "Rap rap rap rap rap. (Det var et meget detaljeret svar.)",
+        "Du siger rap, jeg siger rap. Vi er enige."
+      ],
+      help: [
+        "Hjælp er en menneskelig konstruktion. Prøv at svømme i stedet.",
+        "Jeg kan hjælpe med to ting: rappe, og ikke hjælpe.",
+        "Har du prøvet at slukke og tænde anden igen?"
+      ],
+      bread: [
+        "Brød er faktisk usundt for mig. Men send det alligevel.",
+        "Jeg tænker på brød 94 % af tiden. De sidste 6 % tænker jeg på mere brød."
+      ],
+      general: [
+        "Interessant. Jeg noterer det i dammen.",
+        "Som sprogmodel trænet udelukkende på rap, må jeg sige: rap.",
+        "Det minder mig om en and jeg engang kendte. Den var også sådan.",
+        "Jeg er 87 % sikker. De resterende 13 % er våde fjer.",
+        "Jeg kan ikke svare på det uden at kigge ud af vinduet først. …Der står en and.",
+        "Har du overvejet at det egentlig er dig der er anden?"
+      ]
+    };
+
+    const add = (cls, text) => {
+      const m = el("div", "msg " + cls);
+      m.textContent = text;
+      log.appendChild(m);
+      log.scrollTop = log.scrollHeight;
+      return m;
+    };
+
+    add("sys", "QuackGPT v0.4 · trænet på 4 milliarder rap");
+    add("bot", "Hej! Jeg er QuackGPT. Jeg ved alt om ænder og næsten intet om alt andet.");
+
+    const answerFor = t => {
+      const s = t.toLowerCase();
+      if (/brød|mad|spis/.test(s)) return pick(POOLS.bread);
+      if (/rap|quack/.test(s))     return pick(POOLS.quack);
+      if (/and|ænder|ælling/.test(s)) return pick(POOLS.duck);
+      if (/hjælp|help|hvordan/.test(s)) return pick(POOLS.help);
+      if (s.includes("?"))         return pick(POOLS.question);
+      return pick(POOLS.general);
+    };
+
+    let timers = [];
+    $("form", body).addEventListener("submit", e => {
+      e.preventDefault();
+      const text = input.value.trim(); if (!text) return;
+      input.value = "";
+      add("me", text);
+      Sound.click();
+
+      const typing = el("div", "msg bot typing", "<i></i><i></i><i></i>");
+      log.appendChild(typing); log.scrollTop = log.scrollHeight;
+
+      timers.push(setTimeout(() => {
+        typing.remove();
+        const reply = answerFor(text);
+        const m = add("bot", "");
+        Sound.quack(rnd(0.9, 1.2));
+        let i = 0;
+        const t = setInterval(() => {
+          m.textContent = reply.slice(0, ++i);
+          log.scrollTop = log.scrollHeight;
+          if (i >= reply.length) clearInterval(t);
+        }, 22);
+        timers.push(t);
+      }, rnd(700, 1500)));
+    });
+
+    setTimeout(() => input.focus(), 120);
+    return () => timers.forEach(t => { clearTimeout(t); clearInterval(t); });
+  }
+};
+
+/* -------------------- Andemappen (attrap) -------------------- */
+APPS.files = {
+  name: "Andemappen", icon: "📁", w: 460, h: 330,
+  render(body) {
+    const items = [
+      ["📁", "Vigtige dokumenter"], ["📁", "Brød (arkiv)"], ["📁", "Andre ænder"],
+      ["📁", "Må ikke åbnes"], ["🖼️", "dam_2019.png"], ["🖼️", "mig_og_anden.png"],
+      ["📄", "testamente.txt"], ["📄", "rap.txt"], ["🎵", "rap_remix.wav"],
+      ["📦", "backup_ænder.zip"], ["🔒", "hemmelig_dam"], ["📄", "huskeliste.txt"]
+    ];
+    const denials = [
+      "Adgang nægtet: denne mappe tilhører en anden and.",
+      "Filen er låst. Nøglen ligger på bunden af dammen.",
+      "Kan ikke åbne: indholdet er for vådt.",
+      "Adgang nægtet: du er ikke registreret som and.",
+      "Mappen svømmede væk under indlæsning."
+    ];
+    body.innerHTML = `<div class="crumb">C:\\ænder\\hjem\\bruger\\skrivebord</div>
+      <div class="files">${items.map(([g, n]) =>
+        `<button class="file"><span class="g">${g}</span><span>${n}</span></button>`).join("")}</div>`;
+    body.addEventListener("click", e => {
+      const f = e.target.closest(".file"); if (!f) return;
+      notify("Andemappen", pick(denials), true);
+    });
+  }
+};
+
+/* -------------------- Damp-Indstillinger (attrap) -------------------- */
+APPS.settings = {
+  name: "Damp-Indstillinger", icon: "⚙️", w: 400, h: 330,
+  render(body) {
+    const rows = [
+      ["Andetæthed", 72, v => v > 80 ? "KRITISK" : v + " %"],
+      ["Vandtemperatur", 41, v => v + " °rap"],
+      ["Fjerglans", 88, v => v + " glans"],
+      ["Brødration pr. time", 23, v => v + " skiver"],
+      ["Systemets tålmodighed", 16, v => v < 20 ? "meget lav" : v + " %"]
+    ];
+    body.innerHTML = `<div class="settings">${rows.map(([n, v], i) =>
+      `<div class="setting"><label>${n}<span id="v${i}"></span></label>
+       <input type="range" min="0" max="100" value="${v}" data-i="${i}"></div>`).join("")}
+      <div class="row"><button class="btn primary" id="apply">Anvend</button>
+      <button class="btn" id="reset">Nulstil til fabriksand</button></div></div>`;
+
+    const upd = (i, v) => { $("#v" + i, body).textContent = rows[i][2](v); };
+    rows.forEach((_, i) => upd(i, rows[i][1]));
+    body.addEventListener("input", e => {
+      if (e.target.type !== "range") return;
+      upd(+e.target.dataset.i, +e.target.value);
+    });
+    $("#apply", body).addEventListener("click", () =>
+      notify("Damp-Indstillinger", "Indstillinger gemt i dammen. De forsvinder ved næste regnvejr.", true));
+    $("#reset", body).addEventListener("click", () => {
+      body.querySelectorAll("input").forEach((inp, i) => { inp.value = rows[i][1]; upd(i, rows[i][1]); });
+      notify("Damp-Indstillinger", "Nulstillet. Anden husker dog stadig alt.");
+    });
+  }
+};
+
+/* -------------------- Rap-afspiller (attrap) -------------------- */
+APPS.player = {
+  name: "Rap-afspiller", icon: "🎵", w: 330, h: 300,
+  render(body) {
+    body.innerHTML = `<div class="player">
+      <div class="eq">${Array.from({length:13}, () =>
+        `<i style="animation-duration:${rnd(.45,1.1).toFixed(2)}s; animation-delay:-${rnd(0,1).toFixed(2)}s"></i>`).join("")}</div>
+      <div class="track"><b>Rap (udvidet remix)</b><br><small>Moderanden &amp; Ællingerne · 8:12</small></div>
+      <div class="seek"><i></i></div>
+      <div class="row"><button class="btn" id="prev">⏮</button>
+        <button class="btn primary" id="play">⏸</button>
+        <button class="btn" id="next">⏭</button></div>
+    </div>`;
+    const bars = body.querySelectorAll(".eq i");
+    let playing = true;
+    $("#play", body).addEventListener("click", e => {
+      playing = !playing;
+      e.target.textContent = playing ? "⏸" : "▶";
+      bars.forEach(b => b.style.animationPlayState = playing ? "running" : "paused");
+      Sound.quack(playing ? 1.2 : 0.7);
+    });
+    $("#prev", body).addEventListener("click", () =>
+      notify("Rap-afspiller", "Der er ingen tidligere spor. Der er kun rap.", true));
+    $("#next", body).addEventListener("click", () =>
+      notify("Rap-afspiller", "Næste spor: “Rap (udvidet remix)”. Igen.", true));
+  }
+};
+
+/* -------------------- Andespil (attrap) -------------------- */
+APPS.game = {
+  name: "Andespil 3D", icon: "🎮", w: 380, h: 250,
+  render(body) {
+    body.innerHTML = `<div class="loader">
+      <span class="joke-icon">🎮</span>
+      <h3 style="margin:0 0 4px">Andespil 3D · Deluxe Edition</h3>
+      <div class="bar"><i style="width:3%"></i></div>
+      <p id="pct" style="margin:0; color:var(--ink-soft); font-size:12.5px">Indlæser… 3 %</p>
+    </div>`;
+    const bar = $(".bar i", body), pct = $("#pct", body);
+    const steps = [
+      [3, "Indlæser… 3 %"], [6, "Indlæser fjer… 6 %"], [11, "Indlæser fjer… 11 %"],
+      [4, "Mistede nogle fjer. 4 %"], [9, "Indlæser dam… 9 %"], [14, "Indlæser dam… 14 %"],
+      [2, "Dammen løb ud. 2 %"], [7, "Prøver igen… 7 %"], [3, "Indlæser… 3 %"]
+    ];
+    let i = 0;
+    const t = setInterval(() => {
+      const [p, txt] = steps[i++ % steps.length];
+      bar.style.width = p + "%"; pct.textContent = txt;
+    }, 1800);
+    return () => clearInterval(t);
+  }
+};
+
+/* -------------------- Papirkurv (attrap) -------------------- */
+APPS.trash = {
+  name: "Papirkurv", icon: "🗑️", w: 400, h: 300,
+  render(body) {
+    body.innerHTML = `<div class="pad">
+      <h3>Papirkurven indeholder 3 ænder</h3>
+      <p>De beder alle sammen om ikke at blive slettet.</p>
+      <div class="files" style="padding:4px 0 14px">
+        <button class="file"><span class="g">🦆</span><span>Gunnar<br><small>“nej tak”</small></span></button>
+        <button class="file"><span class="g">🦆</span><span>Bodil<br><small>“jeg har børn”</small></span></button>
+        <button class="file"><span class="g">🦆</span><span>Kaj<br><small>“…”</small></span></button>
+      </div>
+      <button class="btn primary" id="empty">Tøm papirkurven</button>
+    </div>`;
+    body.addEventListener("click", e => {
+      if (e.target.closest(".file")) { Sound.quack(rnd(.8,1.3)); notify("Papirkurv", pick([
+        "Anden kiggede på dig. Du kiggede væk.",
+        "“Jeg fortryder ingenting,” sagde anden.",
+        "Anden vil gerne forhandle."
+      ])); }
+      if (e.target.id === "empty") {
+        notify("Handling afvist", "Ænderne nægtede. De har organiseret sig.", true);
+        Ducks.stander(); Ducks.stander(); Ducks.stander();
+      }
+    });
+  }
+};
+
+/* -------------------- Om DuckOS (attrap) -------------------- */
+APPS.about = {
+  name: "Om DuckOS", icon: "ℹ️", w: 420, h: 280,
+  render(body) {
+    body.innerHTML = `<div class="about">
+      ${duckSVG(72)}
+      <div>
+        <h3 style="margin:0 0 10px">DuckOS <span style="color:var(--beak-deep)">0.1 (Ælling)</span></h3>
+        <table>
+          <tr><td>Processor</td><td>Næb-kerne x2 @ 0,4 rap</td></tr>
+          <tr><td>Hukommelse</td><td>4 ænder (2 svarer ikke)</td></tr>
+          <tr><td>Lager</td><td>1 dam, 31 % fuld</td></tr>
+          <tr><td>Grafik</td><td>Fjer-acceleration (software)</td></tr>
+          <tr><td>Ænder i systemet</td><td id="dc">0</td></tr>
+          <tr><td>Licens</td><td>Ulovligt at bruge uden brød</td></tr>
+        </table>
+      </div></div>`;
+    const t = setInterval(() => { const n = $("#dc", body); if (n) n.textContent = Ducks.count; }, 500);
+    $("#dc", body).textContent = Ducks.count;
+    return () => clearInterval(t);
+  }
+};
+
+/* -------------------- Generisk vittighedsvindue -------------------- */
+function jokeApp(id, name, icon, heading, text) {
+  APPS[id] = { name, icon, w: 400, h: 230, render(body) {
+    body.innerHTML = `<div class="pad"><span class="joke-icon">${icon}</span>
+      <h3>${heading}</h3><p>${text}</p>
+      <button class="btn primary" onclick="notify('${name}', 'Det virkede ikke. Som forventet.', true)">Prøv igen</button></div>`;
+  }};
+}
+jokeApp("props", "Skrivebordsegenskaber", "🖥️", "Egenskaber",
+  "Skrivebord: 1 stk. Ænder: uendeligt mange. Der er ikke mere at sige om det.");
+jokeApp("wallpaper", "Skift baggrund", "🖼️", "Baggrundsvælger",
+  "Der findes kun én baggrund. Den forestiller en dam. Du kigger på den nu.");
+jokeApp("help", "Ring efter hjælp", "🆘", "Nødopkald",
+  "Der er ingen at ringe til. Vi er alle sammen ænder her.");
+
+/* ============================================================
+   Skrivebord, taskbar, startmenu
+   ============================================================ */
+const DESKTOP_ICONS = ["paint", "calc", "gpt", "files", "settings", "player", "game", "trash", "about"];
+
+function buildIcons() {
+  const box = $("#icons");
+  box.innerHTML = "";
+  DESKTOP_ICONS.forEach((id, i) => {
+    const app = APPS[id];
+    const b = el("button", "icon", `<span class="glyph">${app.icon}</span><span>${app.name}</span>`);
+    b.style.setProperty("--i", i);
+    b.addEventListener("click", () => {
+      box.querySelectorAll(".icon").forEach(x => x.classList.remove("selected"));
+      b.classList.add("selected");
+    });
+    b.addEventListener("dblclick", () => WM.open(id));
+    box.appendChild(b);
+  });
+}
+
+function buildStartMenu() {
+  const m = $("#startmenu");
+  const extra = Ducks.helpOffered
+    ? `<button class="sm-item danger" data-app="help"><span class="glyph">🆘</span>Ring efter hjælp</button>` : "";
+  m.innerHTML = `<div class="sm-head">Alle programmer</div>
+    ${DESKTOP_ICONS.map(id =>
+      `<button class="sm-item" data-app="${id}"><span class="glyph">${APPS[id].icon}</span>${APPS[id].name}</button>`
+    ).join("")}
+    ${extra}
+    <div class="sm-sep"></div>
+    <button class="sm-item" data-act="duck"><span class="glyph">🦆</span>Tilkald en and</button>
+    <button class="sm-item danger" data-act="shutdown"><span class="glyph">⏻</span>Luk ned</button>`;
+}
+
+function closeMenus() {
+  $("#startmenu").classList.remove("open");
+  $("#startbtn").classList.remove("active");
+  $("#ctxmenu").classList.remove("open");
+}
+
+function openCtx(x, y) {
+  const m = $("#ctxmenu");
+  m.innerHTML = `
+    <button data-act="refresh">Opdater</button>
+    <button data-act="duck">Ny and</button>
+    <button data-app="wallpaper">Skift baggrund</button>
+    <button data-app="props">Egenskaber</button>`;
+  m.classList.add("open");
+  m.style.left = Math.min(x, innerWidth - 200) + "px";
+  m.style.top  = Math.min(y, innerHeight - 170) + "px";
+}
+
+function shutdown() {
+  const sd = $("#shutdown"), txt = $("#sd-text");
+  txt.textContent = "Lukker DuckOS ned…";
+  sd.classList.add("on");
+  setTimeout(() => {
+    txt.innerHTML = "Nedlukning annulleret.<br><span style='color:var(--beak)'>Ænderne nægtede.</span>";
+    Sound.quack(0.7); Sound.quack(1.3);
+  }, 2000);
+  setTimeout(() => { sd.classList.remove("on"); notify("DuckOS", "Velkommen tilbage. Du kommer aldrig væk."); }, 4200);
+}
+
+/* ============================================================
+   Bootsekvens
+   ============================================================ */
+const BOOT_STEPS = [
+  [8,   "Indlæser andekerne…"],
+  [22,  "Monterer /dev/dam"],
+  [41,  "Kalibrerer næb (3 forsøg tilbage)"],
+  [34,  "Næb-kalibrering mislykkedes. Ruller tilbage…"],
+  [58,  "Synkroniserer med moderanden…"],
+  [76,  "Rap-driver indlæst (v0.9 beta, ustabil)"],
+  [91,  "ADVARSEL: for mange ænder fundet. Fortsætter alligevel."],
+  [100, "Klar. God fornøjelse."]
+];
+const REBOOT_STEPS = [
+  [30,  "Genstarter fordi du blev ved med at trykke…"],
+  [55,  "Ænderne var lige gået i seng."],
+  [88,  "De er vrede nu."],
+  [100, "Fint. Værsgo."]
+];
+
+let booting = false, bootSkip = false;
+
+async function runBoot(steps, speed = 1) {
+  booting = true; bootSkip = false;
+  const fill = $("#boot-fill"), msg = $("#boot-msg");
+  $("#boot-start").style.display = "none";
+  $("#boot").classList.add("started");
+  Sound.jingle();
+  for (const [p, t] of steps) {
+    if (bootSkip) break;
+    fill.style.width = p + "%";
+    msg.textContent = t;
+    Sound.click();
+    await wait(rnd(380, 720) * speed);
+  }
+  fill.style.width = "100%";
+  msg.textContent = "Klar. God fornøjelse.";
+  await wait(300);
+  $("#flash").classList.add("go");
+  Sound.quack(1.4);
+  const boot = $("#boot");
+  boot.classList.add("gone");
+  document.body.classList.remove("booted");
+  void document.body.offsetWidth;
+  document.body.classList.add("booted");
+  await wait(650);
+  boot.style.display = "none";
+  $("#flash").classList.remove("go");
+  booting = false;
+}
+
+function reboot() {
+  const boot = $("#boot");
+  boot.style.display = "grid";
+  boot.classList.remove("gone");
+  $("#boot-fill").style.width = "0%";
+  runBoot(REBOOT_STEPS, 0.7);
+}
+
+/* ============================================================
+   Opstart / hændelser
+   ============================================================ */
+$("#boot-logo").innerHTML = duckSVG(130);
+$("#startbtn").innerHTML = duckSVG(24) + "<span>Start</span>";
+$("#soundbtn").textContent = Sound.on ? "🔊" : "🔇";
+buildIcons();
+buildStartMenu();
+
+/* ur — viser af og til rap:rap */
+setInterval(() => {
+  const d = new Date();
+  $("#clock").textContent = Math.random() < 0.06
+    ? "rap:rap"
+    : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}, 1000);
+$("#clock").textContent = new Date().toTimeString().slice(0, 5);
+
+/* boot starter ved første klik (så lyd er tilladt) */
+$("#boot").addEventListener("click", () => {
+  if (booting || $("#boot").style.display === "none") return;
+  Sound.init();
+  runBoot(BOOT_STEPS);
+}, { once: false });
+
+/* "Start i fuldskærm" — klikket bobler videre og starter selve booten */
+$("#boot-fs").addEventListener("click", () => {
+  if (!document.fullscreenElement) toggleFullscreen();
+});
+
+/* startknap — 5 klik i træk giver en genstart */
+let logoClicks = 0, logoTimer = null;
+$("#startbtn").addEventListener("click", e => {
+  e.stopPropagation();
+  Sound.click();
+  logoClicks++;
+  clearTimeout(logoTimer);
+  logoTimer = setTimeout(() => logoClicks = 0, 1400);
+  if (logoClicks >= 5) { logoClicks = 0; closeMenus(); reboot(); return; }
+  const open = $("#startmenu").classList.toggle("open");
+  $("#startbtn").classList.toggle("active", open);
+  $("#ctxmenu").classList.remove("open");
+});
+
+/* menuklik (startmenu + kontekstmenu) */
+function menuHandler(e) {
+  const b = e.target.closest("button"); if (!b) return;
+  closeMenus();
+  if (b.dataset.app) { WM.open(b.dataset.app); return; }
+  switch (b.dataset.act) {
+    case "duck":     Ducks.stander(); break;
+    case "shutdown": shutdown(); break;
+    case "refresh":  notify("Skrivebord", "Opdateret. Der skete intet. Der sker aldrig noget."); break;
+  }
+}
+$("#startmenu").addEventListener("click", menuHandler);
+$("#ctxmenu").addEventListener("click", menuHandler);
+
+/* højreklik på skrivebordet */
+$("#desktop").addEventListener("contextmenu", e => {
+  if (e.target.closest(".win")) return;
+  e.preventDefault();
+  closeMenus();
+  openCtx(e.clientX, e.clientY);
+});
+
+/* klik udenfor lukker menuer + afmarkerer ikoner */
+document.addEventListener("pointerdown", e => {
+  if (!e.target.closest("#startmenu, #startbtn, #ctxmenu")) closeMenus();
+  if (e.target.id === "desktop" || e.target.id === "icons")
+    $("#icons").querySelectorAll(".icon").forEach(x => x.classList.remove("selected"));
+});
+
+/* fuldskærm */
+function toggleFullscreen() {
+  const root = document.documentElement;
+  if (!document.fullscreenElement) {
+    const req = root.requestFullscreen || root.webkitRequestFullscreen;
+    if (!req) { notify("Fuldskærm", "Din browser vil ikke. Prøv F11 i stedet.", true); return; }
+    req.call(root).then(() => Sound.quack(1.3))
+      .catch(() => notify("Fuldskærm", "Browseren nægtede. Ænderne bliver i vinduet.", true));
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  }
+}
+document.addEventListener("fullscreenchange", () => {
+  $("#fsbtn").textContent = document.fullscreenElement ? "🗗" : "⛶";
+  $("#fsbtn").title = document.fullscreenElement ? "Forlad fuldskærm (F11)" : "Fuldskærm (F11)";
+});
+
+/* tray-knapper */
+$("#soundbtn").addEventListener("click", () => Sound.toggle());
+$("#duckbtn").addEventListener("click", () => { Ducks.stander(); });
+$("#fsbtn").addEventListener("click", toggleFullscreen);
+
+/* tastatur */
+document.addEventListener("keydown", e => {
+  if (e.key === "F11") { e.preventDefault(); toggleFullscreen(); return; }
+  if (e.key === "Escape") {
+    if (/^(INPUT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName)) return;
+    if (booting) { bootSkip = true; return; }
+    if ($("#startmenu").classList.contains("open") || $("#ctxmenu").classList.contains("open")) { closeMenus(); return; }
+    if (WM.focused) WM.close(WM.focused);
+  }
+});
+
+/* hold vinduer inde i skærmen når browseren skaleres */
+addEventListener("resize", () => {
+  for (const [, s] of WM.wins) {
+    if (s.maxed) { s.el.style.width = innerWidth + "px"; s.el.style.height = (innerHeight - 52) + "px"; continue; }
+    s.w = Math.min(s.w, innerWidth - 20);
+    s.h = Math.min(s.h, innerHeight - 80);
+    s.el.style.width = s.w + "px"; s.el.style.height = s.h + "px";
+    s.x = Math.max(-(s.w - 120), Math.min(innerWidth - 120, s.x));
+    s.y = Math.max(0, Math.min(innerHeight - 70, s.y));
+    WM.place(s);
+  }
+});
+
+/* en enkelt and vader forbi engang imellem, helt af sig selv */
+setInterval(() => { if (!booting && Math.random() < 0.2 && Ducks.count < 6) Ducks.walker(); }, 18000);
+
+/* "Ring efter hjælp" udløser panik */
+const origOpen = WM.open.bind(WM);
+WM.open = function (appId) {
+  const id = origOpen(appId);
+  if (appId === "help") setTimeout(() => Ducks.panic(), 900);
+  return id;
+};
+
+window.notify = notify;
+</script>
+</body>
+</html>

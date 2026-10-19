@@ -6,6 +6,7 @@ Nyeste øverst. Skriv en linje, når du lægger et spil eller en ny feature i ha
 
 - Spilhallen åbner: forside med Ugens spil, Nyeste og Alle spil, en side pr. spil og en side om at lægge sit eget spil i Arkaden.
 - Første spil: Reaktion (games/reaktion), med tests af reglerne.
+- Seks spil fra tidligere hold, uden navne: Blokkeland, DuckOS, Fingerspurt (kun time trial, multiplayer kræver holdets egen server), Flesh and Bones, Red Prinsessen og Valhals Porte.
 - Skabelon til nye spil i games/_skabelon.
 - npm start, npm test, npm run lint, npm run games og npm run tjek-pr.
 - GitHub Actions: tjek af pull requests, automatisk merge af spil fra Arkaden-værktøjet (branchen indsend/<slug>, kun spillets egen mappe), og udgivelse på GitHub Pages. Spil fra en fork merger en maintainer i hånden.

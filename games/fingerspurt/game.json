@@ -1,0 +1,13 @@
+{
+  "titel": "Fingerspurt",
+  "beskrivelse": "100 meter i browseren. Tryk præcist på din løber, ellers drejer du af banen. Slå din egen ghost.",
+  "type": "action",
+  "tags": [
+    "sport",
+    "reflekser",
+    "claude code"
+  ],
+  "cover": "cover.png",
+  "styring": "Klik eller tryk",
+  "dato": "2026-10-19"
+}

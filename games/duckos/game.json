@@ -1,0 +1,13 @@
+{
+  "titel": "DuckOS",
+  "beskrivelse": "Et fjollet styresystem, hvor hvert vindue, du lukker, lokker flere ænder frem.",
+  "type": "rolig",
+  "tags": [
+    "fjollet",
+    "ænder",
+    "claude code"
+  ],
+  "cover": "cover.png",
+  "styring": "Mus",
+  "dato": "2026-10-19"
+}

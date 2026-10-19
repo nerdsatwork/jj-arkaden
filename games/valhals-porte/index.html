@@ -1,0 +1,2479 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Valhals Porte</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #02030a;
+    overflow: hidden;
+    font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas {
+    display: block;
+    cursor: crosshair;
+    box-shadow: 0 0 90px rgba(224, 173, 78, 0.14), 0 0 40px rgba(60, 224, 196, 0.10);
+  }
+</style>
+</head>
+<body>
+<canvas id="spil" width="960" height="600"></canvas>
+<script>
+"use strict";
+
+/* =========================================================
+   VALHALS PORTE
+   Et lille roguelite-actionspil. Alt tegnes i kode — ingen
+   billedfiler, ingen biblioteker, ingen internetforbindelse.
+
+   Grafisk stil: mørke silhuetter med glød, som beskrevet, men
+   holdt op mod Hades' måde at gøre det på:
+     · varm mod kold — helten og alt guld er varmt, banen og
+       fjenderne er kolde. Det er derfor figurerne popper ud.
+     · ornamenteret ramme om banen, hugget i sten, med
+       nordisk ringkæde, hjørnemedaljoner og en valknut.
+     · blus i hjørnerne, der kaster flakkende varmt lys på gulvet.
+     · runer, gudesigiller og alt ornamentik tegnet med streger,
+       så det virker uanset hvilke skrifttyper computeren har.
+
+   Våbnet er et SPYD:
+     · Venstre museklik = stød. Tre i træk giver et langt fremstød.
+     · Højre museklik   = kast spydet. Det rammer alt på vejen
+       og kommer tilbage af sig selv.
+     · Dash + stød lige efter = kraftigt fremstød.
+
+   Man sigter med musen i højre hånd og går med venstre. Derfor kan
+   man undvige på fire måder, så der altid er én, man kan nå:
+     · dobbelttryk på en retningstast — undviger den vej. Kræver
+       ingen ekstra finger, for hånden ligger der allerede.
+     · Skift (venstre eller højre) — til en fri lillefinger.
+     · hjulklik på musen — til den hånd, der holder musen.
+     · mellemrum — som før, hvis tommelfingeren er ledig.
+   Kast spydet ligger også på Q og F, ikke kun højre museklik.
+
+   Kodens afsnit:
+     1. Opsætning, palet og hjælpere
+     2. Runer, ornamenter og gudesigiller
+     3. Input
+     4. Spilleren og velsignelsernes virkning
+     5. Velsignelserne fra guderne
+     6. Fjender og rum
+     7. Opdatering (spillets logik)
+     8. Baggrund: stenlag, blus, lys og korn
+     9. Tegning af figurer
+    10. HUD og skærme
+    11. Spilsløjfen
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   1. OPSÆTNING, PALET OG HJÆLPERE
+   --------------------------------------------------------- */
+const canvas = document.getElementById('spil');
+const ctx = canvas.getContext('2d');
+const W = 960, H = 600;
+const BANE = { x: 58, y: 88, w: W - 116, h: H - 150 };   // gulvet man kan gå på
+const RAMME = 26;                                        // stenrammens bredde
+
+// Paletten. Kold bane, varmt guld, varm helt.
+const P = {
+  natDyb:  '#02030a',
+  nat:     '#070b1a',
+  gulvLys: '#1f2d5f',
+  gulvMor: '#070b18',
+  sten:    '#131b33',
+  stenLys: '#2e3d68',
+  stenMor: '#080c18',
+  guld:    '#dfa94a',
+  guldLys: '#ffe1a2',
+  guldMor: '#7d5a1d',
+  ben:     '#f3e8d4',
+  teal:    '#38e3c6',
+  violet:  '#a06cff',
+  blod:    '#e04a44',
+  ild:     '#ff9a3c',
+  ildLys:  '#ffd98a'
+};
+
+// Farver som spillets effekter slår op i
+const FARVE = {
+  kant:    P.teal,
+  lilla:   P.violet,
+  hvid:    '#fff6e2',
+  dash:    '#8ff0ff',
+  spyd:    '#ffe1a2',
+  hjerte:  '#e8564f',
+  draug:   '#b58cff',
+  vaette:  '#4ff3d2',
+  kaster:  '#ffab5c',
+  fenrir:  '#8fd8ff',
+  fenrir2: '#ff5f5a',
+  oje:     '#ff6a5a',
+  varsel:  'rgba(255,90,110,0.55)'
+};
+
+const F_TITEL = '"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif';
+const F_BROD  = '"Palatino Linotype","Book Antiqua",Palatino,Georgia,serif';
+
+const klem = (v, a, b) => v < a ? a : (v > b ? b : v);
+const tilf = (a, b) => a + Math.random() * (b - a);
+function vinkelDiff(a, b) {
+  let d = (a - b) % (Math.PI * 2);
+  if (d >  Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+// fast "tilfældighed" ud fra to tal — bruges til stenens slid,
+// så mønstret ligger stille i stedet for at flimre
+function fastTilf(i, j) {
+  const n = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+/* ---------------------------------------------------------
+   2. RUNER, ORNAMENTER OG GUDESIGILLER
+   Alt er streger, så intet afhænger af skrifttyper.
+   Runerne er tegnet i et felt hvor x går fra -0,4 til 0,4
+   og y fra -1 til 1.
+   --------------------------------------------------------- */
+const RUNER = {
+  fehu:     [[[-.28,-1],[-.28,1]],[[-.28,-.6],[.38,-.92]],[[-.28,-.12],[.38,-.44]]],
+  uruz:     [[[-.34,1],[-.34,-.95]],[[-.34,-.95],[.34,-.62]],[[.34,-.62],[.34,1]]],
+  thurisaz: [[[-.3,-1],[-.3,1]],[[-.3,-.6],[.36,-.18]],[[.36,-.18],[-.3,.24]]],
+  ansuz:    [[[-.28,-1],[-.28,1]],[[-.28,-.84],[.36,-.5]],[[-.28,-.34],[.36,0]]],
+  raidho:   [[[-.28,-1],[-.28,1]],[[-.28,-1],[.32,-.68]],[[.32,-.68],[-.28,-.3]],[[-.28,-.3],[.34,1]]],
+  kaunan:   [[[.3,-.95],[-.3,0]],[[-.3,0],[.3,.95]]],
+  gebo:     [[[-.38,-.9],[.38,.9]],[[.38,-.9],[-.38,.9]]],
+  wunjo:    [[[-.28,-1],[-.28,1]],[[-.28,-1],[.34,-.66]],[[.34,-.66],[-.28,-.3]]],
+  hagalaz:  [[[-.34,-1],[-.34,1]],[[.34,-1],[.34,1]],[[-.34,-.2],[.34,.2]]],
+  isa:      [[[0,-1],[0,1]]],
+  sowilo:   [[[.3,-1],[-.24,-.4]],[[-.24,-.4],[.3,.1]],[[.3,.1],[-.24,.7]]],
+  tiwaz:    [[[0,-1],[0,1]],[[-.36,-.5],[0,-1]],[[0,-1],[.36,-.5]]],
+  laguz:    [[[-.2,-1],[-.2,1]],[[-.2,-1],[.34,-.56]]],
+  algiz:    [[[0,1],[0,-1]],[[0,-.3],[-.4,-1]],[[0,-.3],[.4,-1]]],
+  othala:   [[[0,-1],[.34,-.5]],[[.34,-.5],[0,0]],[[0,0],[-.34,-.5]],[[-.34,-.5],[0,-1]],[[0,0],[.36,1]],[[0,0],[-.36,1]]],
+  dagaz:    [[[-.34,-.9],[-.34,.9]],[[.34,-.9],[.34,.9]],[[-.34,-.9],[.34,.9]],[[-.34,.9],[.34,-.9]]],
+  mannaz:   [[[-.34,-1],[-.34,1]],[[.34,-1],[.34,1]],[[-.34,-1],[.34,-.1]],[[.34,-1],[-.34,-.1]]],
+  ingwaz:   [[[0,-.9],[.34,0]],[[.34,0],[0,.9]],[[0,.9],[-.34,0]],[[-.34,0],[0,-.9]]]
+};
+const RUNENAVNE = Object.keys(RUNER);
+
+function tegnRune(g, navn, x, y, s, farve, lw) {
+  const r = RUNER[navn]; if (!r) return;
+  g.save();
+  g.strokeStyle = farve; g.lineWidth = lw || 2;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath();
+  for (const seg of r) {
+    g.moveTo(x + seg[0][0] * s, y + seg[0][1] * s);
+    g.lineTo(x + seg[1][0] * s, y + seg[1][1] * s);
+  }
+  g.stroke();
+  g.restore();
+}
+
+// Valknut — Odins tegn: tre trekanter der griber ind i hinanden
+function tegnValknut(g, x, y, s, farve, lw) {
+  g.save();
+  g.strokeStyle = farve; g.lineWidth = lw || 2.4;
+  g.lineJoin = 'round';
+  for (let i = 0; i < 3; i++) {
+    const a = -Math.PI / 2 + i * Math.PI * 2 / 3;
+    const cx = x + Math.cos(a) * s * 0.30, cy = y + Math.sin(a) * s * 0.30;
+    g.beginPath();
+    for (let k = 0; k < 3; k++) {
+      const b = -Math.PI / 2 + i * Math.PI * 2 / 3 + k * Math.PI * 2 / 3;
+      const px = cx + Math.cos(b) * s * 0.62, py = cy + Math.sin(b) * s * 0.62;
+      if (k === 0) g.moveTo(px, py); else g.lineTo(px, py);
+    }
+    g.closePath(); g.stroke();
+  }
+  g.restore();
+}
+
+// Ringkæde — det båndornament der løber langs stenrammen
+function tegnRingkaede(g, x1, y1, x2, y2, r, farve) {
+  const laengde = Math.hypot(x2 - x1, y2 - y1);
+  const vink = Math.atan2(y2 - y1, x2 - x1);
+  const skridt = r * 1.25;
+  const antal = Math.floor(laengde / skridt);
+  g.save();
+  g.translate(x1, y1); g.rotate(vink);
+  const start = (laengde - antal * skridt) / 2 + skridt / 2;
+  for (let i = 0; i < antal; i++) {
+    const cx = start + i * skridt;
+    // mørk fals under ringen, så den ser hugget ud
+    g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 4.2;
+    g.beginPath(); g.arc(cx, 0, r, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = farve; g.lineWidth = 1.7;
+    g.beginPath(); g.arc(cx, 0, r, 0, Math.PI * 2); g.stroke();
+  }
+  g.restore();
+}
+
+// Gudernes sigiller. Hver gud har sit eget tegn.
+function tegnGudeSigil(g, navn, x, y, s, farve, glod) {
+  g.save();
+  g.translate(x, y);
+  g.strokeStyle = farve; g.lineJoin = 'round'; g.lineCap = 'round';
+  g.lineWidth = Math.max(1.8, s * 0.13);
+  if (glod !== false) { g.shadowColor = farve; g.shadowBlur = s * 0.7; }
+  const morkt = 'rgba(6,9,20,0.92)';
+
+  if (navn === 'THOR') {                       // Mjølner
+    g.beginPath();
+    g.moveTo(-s * 0.72, -s * 0.78); g.lineTo(s * 0.72, -s * 0.78);
+    g.lineTo(s * 0.55, -s * 0.12); g.lineTo(-s * 0.55, -s * 0.12);
+    g.closePath();
+    g.fillStyle = morkt; g.fill(); g.stroke();
+    g.beginPath();
+    g.moveTo(-s * 0.17, -s * 0.12); g.lineTo(-s * 0.17, s * 0.72);
+    g.lineTo(s * 0.17, s * 0.72); g.lineTo(s * 0.17, -s * 0.12);
+    g.closePath(); g.fillStyle = morkt; g.fill(); g.stroke();
+    g.beginPath();
+    g.moveTo(-s * 0.4, s * 0.9); g.lineTo(s * 0.4, s * 0.9); g.stroke();
+
+  } else if (navn === 'FREJA') {               // Brísingamen og falkevinger
+    g.beginPath(); g.arc(0, -s * 0.1, s * 0.46, 0, Math.PI * 2);
+    g.fillStyle = morkt; g.fill(); g.stroke();
+    g.beginPath();
+    g.moveTo(0, s * 0.36); g.lineTo(-s * 0.2, s * 0.68);
+    g.lineTo(0, s * 0.98); g.lineTo(s * 0.2, s * 0.68);
+    g.closePath(); g.fillStyle = morkt; g.fill(); g.stroke();
+    g.beginPath();
+    g.moveTo(-s * 0.42, -s * 0.3);
+    g.quadraticCurveTo(-s * 1.0, -s * 0.65, -s * 0.95, -s * 0.02);
+    g.moveTo(s * 0.42, -s * 0.3);
+    g.quadraticCurveTo(s * 1.0, -s * 0.65, s * 0.95, -s * 0.02);
+    g.stroke();
+
+  } else if (navn === 'ODIN') {                // valknut
+    tegnValknut(g, 0, 0, s * 1.05, farve, Math.max(1.8, s * 0.12));
+
+  } else if (navn === 'LOKE') {                // slyngende slange
+    g.beginPath();
+    g.moveTo(-s * 0.8, s * 0.7);
+    g.bezierCurveTo(-s * 1.05, -s * 0.5, s * 0.1, -s * 1.05, s * 0.32, -s * 0.2);
+    g.bezierCurveTo(s * 0.5, s * 0.5, -s * 0.45, s * 0.55, -s * 0.28, -s * 0.3);
+    g.bezierCurveTo(-s * 0.15, -s * 0.85, s * 0.85, -s * 0.5, s * 0.72, s * 0.62);
+    g.stroke();
+    // hoved med kløftet tunge
+    g.beginPath();
+    g.moveTo(s * 0.72, s * 0.62); g.lineTo(s * 0.95, s * 0.85);
+    g.moveTo(s * 0.72, s * 0.62); g.lineTo(s * 0.5, s * 0.88);
+    g.stroke();
+
+  } else if (navn === 'TYR') {                 // tiwaz i en skjoldring
+    g.beginPath(); g.arc(0, 0, s * 0.9, 0, Math.PI * 2);
+    g.fillStyle = morkt; g.fill(); g.stroke();
+    tegnRune(g, 'tiwaz', 0, 0, s * 0.62, farve, Math.max(2, s * 0.15));
+  }
+  g.restore();
+}
+
+/* ---------------------------------------------------------
+   3. INPUT
+   --------------------------------------------------------- */
+const taster = Object.create(null);
+const mus = { x: W / 2, y: H / 2, nede: false };
+let musKlik = false, hojreKlik = false, dashOnsket = false;
+let dashAbsolut = null;   // undvig i en fast retning (dobbelttryk)
+
+// Dobbelttryk på en retningstast undviger den vej. Vi husker, hvornår
+// hver tast sidst blev trykket; kommer der et nyt tryk inden for
+// vinduet, bliver det et undvig i stedet for et skridt.
+const sidsteTryk = Object.create(null);
+const DOBBELT_VINDUE = 0.27;    // sekunder
+const RETNINGER = {
+  ArrowLeft:  Math.PI,      KeyA: Math.PI,
+  ArrowRight: 0,            KeyD: 0,
+  ArrowUp:   -Math.PI / 2,  KeyW: -Math.PI / 2,
+  ArrowDown:  Math.PI / 2,  KeyS:  Math.PI / 2
+};
+
+const BLOKERES = ['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+window.addEventListener('keydown', e => {
+  if (BLOKERES.includes(e.code)) e.preventDefault();
+  if (e.repeat) return;
+  taster[e.code] = true;
+  const iMenu = tilstand === 'start' || tilstand === 'sejr' || tilstand === 'doed';
+  if (iMenu && (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter')) {
+    nyRunde(); return;
+  }
+  if (e.code === 'Enter' && tilstand !== 'spil' && tilstand !== 'velsignelse') nyRunde();
+
+  // undvig — flere taster, så der altid er én man kan nå
+  if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') dashOnsket = true;
+
+  // dobbelttryk på en retningstast undviger den vej
+  if (e.code in RETNINGER) {
+    if (sidsteTryk[e.code] && tid - sidsteTryk[e.code] < DOBBELT_VINDUE) {
+      dashAbsolut = RETNINGER[e.code];
+      sidsteTryk[e.code] = 0;
+    } else {
+      sidsteTryk[e.code] = tid;
+    }
+  }
+
+  if (e.code === 'KeyQ' || e.code === 'KeyF') hojreKlik = true;   // kast spydet
+  if (tilstand === 'velsignelse') {
+    if (e.code === 'Digit1' || e.code === 'Numpad1') vaelgVelsignelse(0);
+    if (e.code === 'Digit2' || e.code === 'Numpad2') vaelgVelsignelse(1);
+    if (e.code === 'Digit3' || e.code === 'Numpad3') vaelgVelsignelse(2);
+  }
+});
+window.addEventListener('keyup', e => { taster[e.code] = false; });
+
+function musPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+}
+canvas.addEventListener('mousemove', e => { const p = musPos(e); mus.x = p.x; mus.y = p.y; });
+canvas.addEventListener('mousedown', e => {
+  const p = musPos(e); mus.x = p.x; mus.y = p.y;
+  if (e.button === 1) { dashOnsket = true; e.preventDefault(); return; }   // hjulklik undviger
+  if (e.button === 2) { hojreKlik = true; e.preventDefault(); return; }
+  mus.nede = true; musKlik = true;
+  if (tilstand === 'start' || tilstand === 'sejr' || tilstand === 'doed') { nyRunde(); return; }
+  if (tilstand === 'velsignelse') klikPaaKort(p.x, p.y);
+});
+window.addEventListener('mouseup', e => { if (e.button !== 2) mus.nede = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('blur', () => { for (const k in taster) taster[k] = false; mus.nede = false; });
+
+function tilpasStorrelse() {
+  const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.style.width  = Math.floor(W * s) + 'px';
+  canvas.style.height = Math.floor(H * s) + 'px';
+}
+window.addEventListener('resize', tilpasStorrelse);
+tilpasStorrelse();
+
+/* ---------------------------------------------------------
+   4. SPILLEREN OG VELSIGNELSERNES VIRKNING
+   --------------------------------------------------------- */
+const GRUND = {
+  fart: 250, raek: 134, bredde: 23, afkol: 0.27, skade: 1,
+  dashFart: 940, dashTid: 0.15, dashGenop: 0.8, usaarTid: 1.1,
+  kastAfkol: 0.45
+};
+const STOD_ANIM = 0.19;
+
+let tilstand = 'start';
+let tid = 0, rundeTid = 0, rystning = 0, hitStop = 0;
+let rumIndex = 0, overgangTid = 0, rumTekstTid = 0;
+
+const spiller = {
+  x: W / 2, y: 0, r: 18, retning: 0,
+  hjerter: 3, maxHjerter: 3,
+  usaarlig: 0, skjold: 0,
+  stodAfkoling: 0, stodAnim: 0, stodTaeller: 0,
+  kombo: 0, komboTid: 0, stodLang: false, stodRaek: 0,
+  dashLadning: 1, dashTid: 0, dashVx: 0, dashVy: 0, dashGenopladning: 0,
+  sidenDash: 9, spydUde: false, kastAfkoling: 0
+};
+
+let mods = {};
+function nulstilMods() {
+  mods = {
+    fart: GRUND.fart, raek: GRUND.raek, bredde: GRUND.bredde,
+    afkol: GRUND.afkol, skade: GRUND.skade,
+    dashMax: 1,
+    lyn: false, tordenskrald: false, helEfterRum: false,
+    varsel: false, runeslag: false,
+    forvirring: false, dobbeltStod: false,
+    tilbageslag: false, skjoldEfterRam: false, kastKraft: 1
+  };
+}
+
+let fjender = [], skud = [], partikler = [], lyn = [], boelger = [],
+    ringe = [], striber = [], bursts = [], skaar = [], ventendeStod = [],
+    kastetSpyd = null;
+let valgteVelsignelser = [];
+
+/* ---------------------------------------------------------
+   5. VELSIGNELSERNE — fem guder med tre hver, de kan stables
+   --------------------------------------------------------- */
+const GUDER = [
+  {
+    navn: 'THOR', titel: 'Den tordnende', farve: '#ffcf5e', rune: 'thurisaz',
+    velsignelser: [
+      { navn: 'Mjølners gnist', tekst: 'Hvert tredje stød kalder lyn ned over de nærmeste fjender.',
+        virk: () => { mods.lyn = true; } },
+      { navn: 'Tordenkraft', tekst: 'Dine stød gør dobbelt skade, men spydet er langsommere.',
+        virk: () => { mods.skade *= 2; mods.afkol *= 1.5; } },
+      { navn: 'Tordenskrald', tekst: 'Dit dash udsender en trykbølge, der skader alt omkring dig.',
+        virk: () => { mods.tordenskrald = true; } }
+    ]
+  },
+  {
+    navn: 'FREJA', titel: 'Vanadis', farve: '#ff85b4', rune: 'fehu',
+    velsignelser: [
+      { navn: 'Vanadis’ hånd', tekst: 'Du heler ét hjerte, hver gang et rum er ryddet.',
+        virk: () => { mods.helEfterRum = true; } },
+      { navn: 'Frejas fjer', tekst: 'Du får et ekstra hjerte — og det er fyldt.',
+        virk: () => { spiller.maxHjerter++; spiller.hjerter++; } },
+      { navn: 'Falkedragt', tekst: 'Du bevæger dig mærkbart hurtigere.',
+        virk: () => { mods.fart *= 1.18; } }
+    ]
+  },
+  {
+    navn: 'ODIN', titel: 'Alfader', farve: '#93bcff', rune: 'ansuz',
+    velsignelser: [
+      { navn: 'Gungnirs række', tekst: 'Spydet bliver længere og rammer bredere.',
+        virk: () => { mods.raek *= 1.3; mods.bredde += 7; } },
+      { navn: 'Ravnens blik', tekst: 'Fjendernes angreb varsles tydeligt på gulvet.',
+        virk: () => { mods.varsel = true; } },
+      { navn: 'Runeslag', tekst: 'Hvert stød sender en runebølge frem, der rammer på afstand.',
+        virk: () => { mods.runeslag = true; } }
+    ]
+  },
+  {
+    navn: 'LOKE', titel: 'Bedrageren', farve: '#72ffae', rune: 'laguz',
+    velsignelser: [
+      { navn: 'Skyggeskridt', tekst: 'Du får et ekstra dash at bruge.',
+        virk: () => { mods.dashMax++; spiller.dashLadning++; } },
+      { navn: 'Bedragerens tåge', tekst: 'Fjender bliver forvirrede et øjeblik, når du dasher forbi.',
+        virk: () => { mods.forvirring = true; } },
+      { navn: 'Dobbeltgænger', tekst: 'Hvert stød rammer to gange kort efter hinanden.',
+        virk: () => { mods.dobbeltStod = true; } }
+    ]
+  },
+  {
+    navn: 'TYR', titel: 'Den enhåndede', farve: '#ffab64', rune: 'tiwaz',
+    velsignelser: [
+      { navn: 'Skjoldstød', tekst: 'Dine stød slår fjenderne kraftigt tilbage.',
+        virk: () => { mods.tilbageslag = true; } },
+      { navn: 'Sejrens skjold', tekst: 'Når du bliver ramt, får du et skjold, der stopper næste ramme.',
+        virk: () => { mods.skjoldEfterRam = true; } },
+      { navn: 'Kastets kraft', tekst: 'Det kastede spyd gør meget mere skade og kan kastes oftere.',
+        virk: () => { mods.kastKraft = 2.2; } }
+    ]
+  }
+];
+
+let tilbudt = [], tilbudtGud = null;
+
+function findTilbud() {
+  const taget = new Set(valgteVelsignelser.map(v => v.navn));
+  const raekke = GUDER.slice().sort(() => Math.random() - 0.5);
+  const gud = raekke.find(g => g.velsignelser.some(v => !taget.has(v.navn))) || GUDER[0];
+  tilbudtGud = gud;
+  let kort = gud.velsignelser.filter(v => !taget.has(v.navn)).map(v => ({ gud, v }));
+  if (kort.length < 3) {
+    const rest = [];
+    for (const g of raekke) {
+      if (g === gud) continue;
+      for (const v of g.velsignelser) if (!taget.has(v.navn)) rest.push({ gud: g, v });
+    }
+    rest.sort(() => Math.random() - 0.5);
+    while (kort.length < 3 && rest.length) kort.push(rest.shift());
+  }
+  kort.sort(() => Math.random() - 0.5);
+  tilbudt = kort.slice(0, 3);
+}
+
+function vaelgVelsignelse(i) {
+  if (tilstand !== 'velsignelse' || !tilbudt[i]) return;
+  const valg = tilbudt[i];
+  valg.v.virk();
+  valgteVelsignelser.push({ navn: valg.v.navn, gud: valg.gud.navn, farve: valg.gud.farve });
+  spiller.dashLadning = mods.dashMax;
+  tilbudt = [];
+  rumIndex++;
+  startRum(rumIndex);
+  // gudens gave slår ned i helten idet det næste rum åbner
+  lavRing(spiller.x, spiller.y, valg.gud.farve, 170);
+  lavBurst(spiller.x, spiller.y, valg.gud.farve, 2);
+  gnister(spiller.x, spiller.y, valg.gud.farve, 36, 1.4);
+  rystning = 8;
+}
+
+const KORT = { b: 244, h: 318, mellem: 30 };
+function kortRamme(i) {
+  const samlet = KORT.b * 3 + KORT.mellem * 2;
+  const x0 = (W - samlet) / 2;
+  return { x: x0 + i * (KORT.b + KORT.mellem), y: 168, b: KORT.b, h: KORT.h };
+}
+function klikPaaKort(mx, my) {
+  for (let i = 0; i < tilbudt.length; i++) {
+    const r = kortRamme(i);
+    if (mx >= r.x && mx <= r.x + r.b && my >= r.y - 14 && my <= r.y + r.h) { vaelgVelsignelse(i); return; }
+  }
+}
+
+/* ---------------------------------------------------------
+   6. FJENDER OG RUM
+   --------------------------------------------------------- */
+function lavFjende(slags, x, y) {
+  const f = { slags, x, y, blink: 0, doed: false, fase: tilf(0, 6.283),
+              forvirret: 0, fRetning: 0, stodX: 0, stodY: 0, vender: 0 };
+  if (slags === 'draug')  { f.r = 21; f.liv = 3; f.fart = 82; }
+  if (slags === 'vaette') { f.r = 14; f.liv = 1; f.fart = 190; f.zig = tilf(0, 6.283); }
+  if (slags === 'kaster') { f.r = 26; f.liv = 5; f.fart = 48; f.kastCd = tilf(1.0, 2.2); f.varsel = 0; }
+  if (slags === 'fenrir') {
+    f.r = 44; f.liv = 50; f.maxLiv = 50; f.fart = 0;
+    f.fase2 = false; f.trin = 'pause'; f.trinTid = 1.0;
+    f.mVx = 1; f.mVy = 0; f.stormTal = 0;
+  }
+  return f;
+}
+
+function spawnVaek(slags, minAfst) {
+  let x, y, n = 0;
+  do {
+    x = tilf(BANE.x + 46, BANE.x + BANE.w - 46);
+    y = tilf(BANE.y + 46, BANE.y + BANE.h - 46);
+    n++;
+  } while (Math.hypot(x - spiller.x, y - spiller.y) < (minAfst || 250) && n < 80);
+  const f = lavFjende(slags, x, y);
+  fjender.push(f);
+  const farve = slags === 'vaette' ? FARVE.vaette : slags === 'kaster' ? FARVE.kaster : FARVE.draug;
+  gnister(x, y, farve, 16);
+  lavRing(x, y, farve, 54);
+  return f;
+}
+
+const RUM = [
+  { navn: 'FØRSTE PORT', undertitel: 'De dødes gang', rune: 'isa',      hold: { draug: 5 } },
+  { navn: 'ANDEN PORT',  undertitel: 'Frostbroen',    rune: 'hagalaz',  hold: { draug: 4, vaette: 7 } },
+  { navn: 'TREDJE PORT', undertitel: 'Runesalen',     rune: 'dagaz',    hold: { draug: 4, vaette: 6, kaster: 2 } },
+  { navn: 'FENRIRS GAB', undertitel: 'Ulven venter',  rune: 'algiz',    hold: { fenrir: 1 } }
+];
+
+function startRum(i) {
+  fjender = []; skud = []; lyn = []; boelger = []; ringe = []; striber = [];
+  bursts = []; skaar = []; ventendeStod = []; kastetSpyd = null;
+  spiller.x = W / 2; spiller.y = BANE.y + BANE.h - 60;
+  spiller.usaarlig = 0.8;
+  spiller.dashLadning = mods.dashMax;
+  spiller.spydUde = false; spiller.kastAfkoling = 0;
+  spiller.kombo = 0; spiller.komboTid = 0;
+  const def = RUM[i];
+  for (const slags in def.hold) {
+    for (let n = 0; n < def.hold[slags]; n++) {
+      if (slags === 'fenrir') {
+        const f = lavFjende('fenrir', W / 2, BANE.y + 120);
+        fjender.push(f);
+        gnister(f.x, f.y, FARVE.fenrir, 60, 2);
+        lavRing(f.x, f.y, FARVE.fenrir, 200);
+        rystning = 14;
+      } else spawnVaek(slags);
+    }
+  }
+  rumTekstTid = 2.4;
+  tilstand = 'spil';
+}
+
+function nyRunde() {
+  nulstilMods();
+  spiller.maxHjerter = 3; spiller.hjerter = 3;
+  spiller.skjold = 0; spiller.stodTaeller = 0;
+  valgteVelsignelser = [];
+  rumIndex = 0; rundeTid = 0; partikler = [];
+  startRum(0);
+}
+
+/* ---------- Effekter ---------- */
+function gnister(x, y, farve, antal, fartFaktor) {
+  fartFaktor = fartFaktor || 1;
+  for (let i = 0; i < antal; i++) {
+    const a = tilf(0, Math.PI * 2), f = tilf(50, 270) * fartFaktor;
+    partikler.push({ x, y, vx: Math.cos(a) * f, vy: Math.sin(a) * f,
+                     liv: tilf(0.25, 0.65), maxLiv: 0.65, farve, str: tilf(1.5, 3.6) });
+  }
+}
+function lavRing(x, y, farve, maxR) {
+  ringe.push({ x, y, r: 6, maxR: maxR || 100, farve, liv: 0.35, maxLiv: 0.35 });
+}
+function lavStribe(x, y, retning, laengde, bredde, farve) {
+  striber.push({ x, y, retning, laengde, bredde, farve, liv: 0.22, maxLiv: 0.22 });
+}
+// stjerneformet lysglimt ved træf — det er den slags glimt Hades bruger
+function lavBurst(x, y, farve, str) {
+  bursts.push({ x, y, farve, str: str || 1, drej: tilf(0, 6.283), liv: 0.17, maxLiv: 0.17 });
+}
+// runeskår der stiger op når en fjende falder
+function lavSkaar(x, y, farve, antal) {
+  for (let i = 0; i < antal; i++) {
+    skaar.push({ x: x + tilf(-10, 10), y: y + tilf(-10, 10),
+                 vx: tilf(-30, 30), vy: tilf(-70, -30),
+                 rune: RUNENAVNE[Math.floor(Math.random() * RUNENAVNE.length)],
+                 s: tilf(5, 9), drej: tilf(-0.4, 0.4), farve,
+                 liv: tilf(0.5, 0.9), maxLiv: 0.9 });
+  }
+}
+function lavLyn(x, y) {
+  const pkt = []; const px = x + tilf(-30, 30), py = BANE.y - 10;
+  pkt.push({ x: px, y: py });
+  for (let i = 1; i <= 7; i++) {
+    const t = i / 7;
+    pkt.push({ x: x * t + px * (1 - t) + tilf(-14, 14) * (1 - t), y: py + (y - py) * t });
+  }
+  pkt.push({ x, y });
+  lyn.push({ pkt, liv: 0.28, maxLiv: 0.28 });
+}
+
+/* ---------------------------------------------------------
+   7. OPDATERING
+   --------------------------------------------------------- */
+function opdater(dt) {
+  tid += dt;
+  if (hitStop > 0) { hitStop -= dt; opdaterEffekter(dt * 0.35); return; }
+  rystning = Math.max(0, rystning - dt * 30);
+  opdaterEffekter(dt);
+  opdaterFnug(dt);
+
+  if (tilstand === 'spil') {
+    rundeTid += dt;
+    rumTekstTid = Math.max(0, rumTekstTid - dt);
+    opdaterSpiller(dt);
+    opdaterFjender(dt);
+    opdaterSkud(dt);
+    ryddDoede();
+    if (spiller.hjerter <= 0) { tilstand = 'doed'; rystning = 18; }
+    else if (fjender.length === 0) {
+      if (rumIndex >= 3) { tilstand = 'sejr'; rystning = 10; }
+      else { tilstand = 'overgang'; overgangTid = 1.0; hvisHeling(); }
+    }
+  } else if (tilstand === 'overgang') {
+    overgangTid -= dt;
+    if (overgangTid <= 0) { findTilbud(); tilstand = 'velsignelse'; }
+  }
+  dashOnsket = false; dashAbsolut = null; musKlik = false; hojreKlik = false;
+}
+
+function hvisHeling() {
+  if (mods.helEfterRum && spiller.hjerter < spiller.maxHjerter) {
+    spiller.hjerter++;
+    gnister(spiller.x, spiller.y, '#ff85b4', 28, 1.1);
+    lavRing(spiller.x, spiller.y, '#ff85b4', 90);
+  }
+}
+
+function opdaterSpiller(dt) {
+  const p = spiller;
+  p.retning = Math.atan2(mus.y - p.y, mus.x - p.x);
+  p.usaarlig     = Math.max(0, p.usaarlig - dt);
+  p.stodAfkoling = Math.max(0, p.stodAfkoling - dt);
+  p.stodAnim     = Math.max(0, p.stodAnim - dt);
+  p.kastAfkoling = Math.max(0, p.kastAfkoling - dt);
+  p.sidenDash   += dt;
+  p.komboTid     = Math.max(0, p.komboTid - dt);
+  if (p.komboTid <= 0) p.kombo = 0;
+
+  if (p.dashLadning < mods.dashMax) {
+    p.dashGenopladning -= dt;
+    if (p.dashGenopladning <= 0) { p.dashLadning++; p.dashGenopladning = GRUND.dashGenop; }
+  }
+
+  let ix = 0, iy = 0;
+  if (taster['KeyA'] || taster['ArrowLeft'])  ix -= 1;
+  if (taster['KeyD'] || taster['ArrowRight']) ix += 1;
+  if (taster['KeyW'] || taster['ArrowUp'])    iy -= 1;
+  if (taster['KeyS'] || taster['ArrowDown'])  iy += 1;
+  const l = Math.hypot(ix, iy);
+  if (l > 0) { ix /= l; iy /= l; }
+
+  if (p.dashTid > 0) {
+    p.dashTid -= dt;
+    p.x += p.dashVx * dt; p.y += p.dashVy * dt;
+    p.usaarlig = Math.max(p.usaarlig, 0.06);
+    gnister(p.x, p.y, FARVE.dash, 2, 0.3);
+    if (mods.forvirring) {
+      for (const f of fjender) {
+        if (f.slags === 'fenrir') continue;
+        if (Math.hypot(f.x - p.x, f.y - p.y) < 80) { f.forvirret = 1.6; f.fRetning = tilf(0, 6.283); }
+      }
+    }
+  } else if ((dashOnsket || dashAbsolut !== null) && p.dashLadning > 0) {
+    p.dashLadning--;
+    if (p.dashLadning === mods.dashMax - 1) p.dashGenopladning = GRUND.dashGenop;
+    let dx = ix, dy = iy;
+    if (dashAbsolut !== null) {
+      // dobbelttryk: undvig præcis den vej, tasten peger
+      dx = Math.cos(dashAbsolut); dy = Math.sin(dashAbsolut);
+    } else if (l === 0) {
+      // står man stille, undviger man fremad mod markøren
+      dx = Math.cos(p.retning); dy = Math.sin(p.retning);
+    }
+    p.dashVx = dx * GRUND.dashFart; p.dashVy = dy * GRUND.dashFart;
+    p.dashTid = GRUND.dashTid;
+    p.sidenDash = 0;
+    gnister(p.x, p.y, FARVE.dash, 18);
+    if (mods.tordenskrald) {
+      lavRing(p.x, p.y, '#ffcf5e', 120);
+      rystning = Math.max(rystning, 7);
+      for (const f of fjender) {
+        if (Math.hypot(f.x - p.x, f.y - p.y) < 105 + f.r)
+          ramFjende(f, 1, Math.atan2(f.y - p.y, f.x - p.x), 26);
+      }
+    }
+  } else {
+    p.x += ix * mods.fart * dt;
+    p.y += iy * mods.fart * dt;
+  }
+
+  p.x = klem(p.x, BANE.x + p.r, BANE.x + BANE.w - p.r);
+  p.y = klem(p.y, BANE.y + p.r, BANE.y + BANE.h - p.r);
+
+  if ((mus.nede || musKlik) && p.stodAfkoling <= 0 && !p.spydUde) stod();
+  if (hojreKlik && !p.spydUde && p.kastAfkoling <= 0) kastSpyd();
+  opdaterKastetSpyd(dt);
+
+  for (const v of ventendeStod) {
+    v.t -= dt;
+    if (v.t <= 0 && !v.brugt) { v.brugt = true; ramLinje(v.retning, v.raek, 0.6, false); }
+  }
+  ventendeStod = ventendeStod.filter(v => !v.brugt);
+}
+
+function stod() {
+  const p = spiller;
+  p.kombo = (p.kombo % 3) + 1;
+  p.komboTid = 0.75;
+  p.stodTaeller++;
+
+  const fremstod = p.sidenDash < 0.30;
+  const tredje   = p.kombo === 3;
+  const raek     = mods.raek * (tredje ? 1.32 : 1) * (fremstod ? 1.25 : 1);
+  const skadeF   = (tredje ? 1.6 : 1) * (fremstod ? 1.4 : 1);
+
+  p.stodAfkoling = mods.afkol * (tredje ? 1.35 : 1);
+  p.stodAnim = STOD_ANIM;
+  p.stodLang = tredje || fremstod;
+  p.stodRaek = raek;
+
+  if (tredje || fremstod) {
+    p.x = klem(p.x + Math.cos(p.retning) * 30, BANE.x + p.r, BANE.x + BANE.w - p.r);
+    p.y = klem(p.y + Math.sin(p.retning) * 30, BANE.y + p.r, BANE.y + BANE.h - p.r);
+  }
+
+  rystning = Math.max(rystning, tredje || fremstod ? 6 : 2.5);
+  lavStribe(p.x, p.y, p.retning, raek, (mods.bredde + (tredje ? 14 : 0)) * 1.9,
+            fremstod ? FARVE.dash : FARVE.spyd);
+
+  ramLinje(p.retning, raek, skadeF, true);
+  if (mods.dobbeltStod) ventendeStod.push({ t: 0.14, retning: p.retning, raek, brugt: false });
+
+  if (mods.lyn && p.stodTaeller % 3 === 0) {
+    const naere = fjender
+      .filter(f => Math.hypot(f.x - p.x, f.y - p.y) < 280)
+      .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))
+      .slice(0, 3);
+    for (const f of naere) {
+      lavLyn(f.x, f.y);
+      ramFjende(f, 2, Math.atan2(f.y - p.y, f.x - p.x), 6);
+      gnister(f.x, f.y, '#ffcf5e', 16, 1.2);
+      lavBurst(f.x, f.y, '#ffe1a2', 1.3);
+    }
+    if (naere.length) rystning = Math.max(rystning, 8);
+  }
+
+  if (mods.runeslag) {
+    boelger.push({ x: p.x, y: p.y, vx: Math.cos(p.retning) * 580, vy: Math.sin(p.retning) * 580,
+                   liv: 0.55, maxLiv: 0.55, ramt: [] });
+  }
+}
+
+function ramLinje(retning, raek, skadeF, medStop) {
+  const p = spiller;
+  const c = Math.cos(retning), s = Math.sin(retning);
+  let ramte = 0;
+  for (const f of fjender) {
+    const dx = f.x - p.x, dy = f.y - p.y;
+    const langs = dx * c + dy * s, tvaers = -dx * s + dy * c;
+    if (langs < -14 || langs > raek) continue;
+    if (Math.abs(tvaers) > mods.bredde + f.r) continue;
+    ramFjende(f, mods.skade * skadeF, Math.atan2(dy, dx), mods.tilbageslag ? 46 : 13);
+    ramte++;
+  }
+  for (const sk of skud) {
+    if (!sk.fjendtlig) continue;
+    const dx = sk.x - p.x, dy = sk.y - p.y;
+    const langs = dx * c + dy * s, tvaers = -dx * s + dy * c;
+    if (langs > -14 && langs < raek && Math.abs(tvaers) < mods.bredde + sk.r) {
+      sk.doed = true; gnister(sk.x, sk.y, FARVE.hvid, 10); lavBurst(sk.x, sk.y, FARVE.spyd, 0.8);
+    }
+  }
+  if (medStop && ramte > 0) hitStop = 0.05;
+  return ramte;
+}
+
+function kastSpyd() {
+  const p = spiller;
+  p.spydUde = true;
+  kastetSpyd = {
+    x: p.x + Math.cos(p.retning) * 20, y: p.y + Math.sin(p.retning) * 20,
+    vx: Math.cos(p.retning) * 980, vy: Math.sin(p.retning) * 980,
+    retning: p.retning, spin: 0, retur: false, rejst: 0, ramt: []
+  };
+  gnister(p.x, p.y, FARVE.spyd, 12);
+}
+
+function opdaterKastetSpyd(dt) {
+  const p = spiller, k = kastetSpyd;
+  if (!k) return;
+  if (!k.retur) {
+    k.x += k.vx * dt; k.y += k.vy * dt;
+    k.rejst += Math.hypot(k.vx, k.vy) * dt;
+    const udenfor = k.x < BANE.x + 8 || k.x > BANE.x + BANE.w - 8 ||
+                    k.y < BANE.y + 8 || k.y > BANE.y + BANE.h - 8;
+    if (k.rejst > 400 || udenfor) {
+      k.retur = true; k.ramt = [];
+      gnister(k.x, k.y, FARVE.spyd, 10); lavBurst(k.x, k.y, FARVE.spyd, 0.9);
+    }
+  } else {
+    const vink = Math.atan2(p.y - k.y, p.x - k.x);
+    k.retning = vink;
+    k.x += Math.cos(vink) * 1150 * dt;
+    k.y += Math.sin(vink) * 1150 * dt;
+    if (Math.hypot(p.x - k.x, p.y - k.y) < 24) {
+      kastetSpyd = null; p.spydUde = false;
+      p.kastAfkoling = GRUND.kastAfkol / (mods.kastKraft > 1 ? 1.8 : 1);
+      gnister(p.x, p.y, FARVE.spyd, 10);
+      return;
+    }
+  }
+  k.spin += dt * 22;
+  gnister(k.x, k.y, FARVE.spyd, 1, 0.25);
+
+  for (const f of fjender) {
+    if (k.ramt.includes(f)) continue;
+    if (Math.hypot(f.x - k.x, f.y - k.y) < f.r + 16) {
+      k.ramt.push(f);
+      ramFjende(f, mods.skade * 2 * mods.kastKraft, Math.atan2(k.vy, k.vx), 20);
+      gnister(f.x, f.y, FARVE.spyd, 14, 1.2);
+      hitStop = 0.04;
+    }
+  }
+  for (const sk of skud) {
+    if (sk.fjendtlig && Math.hypot(sk.x - k.x, sk.y - k.y) < sk.r + 14) {
+      sk.doed = true; gnister(sk.x, sk.y, FARVE.hvid, 10);
+    }
+  }
+}
+
+function ramFjende(f, skade, vinkel, stod) {
+  if (f.doed) return;
+  f.liv -= skade;
+  f.blink = 0.14;
+  gnister(f.x, f.y, FARVE.hvid, 9);
+  lavBurst(f.x - Math.cos(vinkel) * f.r * 0.4, f.y - Math.sin(vinkel) * f.r * 0.4,
+           '#fff6e2', f.slags === 'fenrir' ? 1.5 : 1);
+  const s = (stod === undefined ? 12 : stod) * (f.slags === 'fenrir' ? 0.12 : 1);
+  f.stodX += Math.cos(vinkel) * s;
+  f.stodY += Math.sin(vinkel) * s;
+  if (f.liv <= 0) f.doed = true;
+  if (f.slags === 'fenrir' && !f.fase2 && f.liv <= f.maxLiv / 2 && !f.doed) {
+    f.fase2 = true; f.trin = 'brol'; f.trinTid = 1.1;
+    rystning = 16; hitStop = 0.12;
+    gnister(f.x, f.y, FARVE.fenrir2, 60, 1.8);
+    lavRing(f.x, f.y, FARVE.fenrir2, 260);
+  }
+}
+
+function skadSpiller() {
+  const p = spiller;
+  if (p.usaarlig > 0) return;
+  if (p.skjold > 0) {
+    p.skjold = 0; p.usaarlig = 0.7;
+    lavRing(p.x, p.y, '#ffab64', 80);
+    gnister(p.x, p.y, '#ffab64', 22, 1.2);
+    return;
+  }
+  p.hjerter--;
+  p.usaarlig = GRUND.usaarTid;
+  rystning = 13; hitStop = 0.07;
+  gnister(p.x, p.y, FARVE.hjerte, 26, 1.2);
+  for (const f of fjender) {
+    if (f.slags === 'fenrir') continue;
+    const d = Math.hypot(f.x - p.x, f.y - p.y);
+    if (d < 90 && d > 0.001) { f.stodX += (f.x - p.x) / d * 34; f.stodY += (f.y - p.y) / d * 34; }
+  }
+  if (mods.skjoldEfterRam) p.skjold = 1;
+}
+
+function opdaterFjender(dt) {
+  for (const f of fjender) {
+    f.blink = Math.max(0, f.blink - dt);
+    f.fase += dt * 3;
+    f.forvirret = Math.max(0, f.forvirret - dt);
+    f.x += f.stodX * dt * 12; f.y += f.stodY * dt * 12;
+    f.stodX *= 0.82; f.stodY *= 0.82;
+
+    // hvilken vej fjenden ser — bruges når den tegnes
+    const maalVink = Math.atan2(spiller.y - f.y, spiller.x - f.x);
+    f.vender = f.vender + vinkelDiff(maalVink, f.vender) * Math.min(1, dt * 8);
+
+    if (f.slags === 'fenrir') opdaterFenrir(f, dt);
+    else if (f.forvirret > 0) {
+      f.x += Math.cos(f.fRetning) * f.fart * 0.6 * dt;
+      f.y += Math.sin(f.fRetning) * f.fart * 0.6 * dt;
+    } else if (f.slags === 'draug') {
+      gaaMod(f, spiller, f.fart, dt);
+    } else if (f.slags === 'vaette') {
+      f.zig += dt * 5;
+      const vink = maalVink + Math.sin(f.zig) * 0.6;
+      f.x += Math.cos(vink) * f.fart * dt;
+      f.y += Math.sin(vink) * f.fart * dt;
+    } else if (f.slags === 'kaster') {
+      const d = Math.hypot(spiller.x - f.x, spiller.y - f.y);
+      if (d < 240) gaaMod(f, spiller, -f.fart, dt);
+      else if (d > 350) gaaMod(f, spiller, f.fart * 0.7, dt);
+      if (f.varsel > 0) {
+        f.varsel -= dt;
+        if (f.varsel <= 0) {
+          skud.push({ x: f.x + Math.cos(maalVink) * 24, y: f.y + Math.sin(maalVink) * 24,
+                      vx: Math.cos(maalVink) * 300, vy: Math.sin(maalVink) * 300,
+                      r: 9, fjendtlig: true, doed: false, spin: 0 });
+          gnister(f.x, f.y, FARVE.kaster, 12);
+        }
+      } else {
+        f.kastCd -= dt;
+        if (f.kastCd <= 0) { f.kastCd = tilf(2.1, 3.0); f.varsel = mods.varsel ? 1.1 : 0.85; }
+      }
+    }
+
+    for (const g of fjender) {
+      if (g === f || g.slags === 'fenrir' || f.slags === 'fenrir') continue;
+      const ax = f.x - g.x, ay = f.y - g.y;
+      const ad = Math.hypot(ax, ay), min = f.r + g.r;
+      if (ad > 0.001 && ad < min) {
+        const skub = (min - ad) * 0.5;
+        f.x += (ax / ad) * skub; f.y += (ay / ad) * skub;
+      }
+    }
+
+    f.x = klem(f.x, BANE.x + f.r, BANE.x + BANE.w - f.r);
+    f.y = klem(f.y, BANE.y + f.r, BANE.y + BANE.h - f.r);
+    if (Math.hypot(f.x - spiller.x, f.y - spiller.y) < f.r + spiller.r) skadSpiller();
+  }
+
+  for (const b of boelger) {
+    b.liv -= dt;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    for (const f of fjender) {
+      if (b.ramt.includes(f)) continue;
+      if (Math.hypot(f.x - b.x, f.y - b.y) < f.r + 16) {
+        b.ramt.push(f);
+        ramFjende(f, mods.skade * 0.8, Math.atan2(b.vy, b.vx), 8);
+      }
+    }
+  }
+  boelger = boelger.filter(b => b.liv > 0 &&
+    b.x > BANE.x - 30 && b.x < BANE.x + BANE.w + 30 &&
+    b.y > BANE.y - 30 && b.y < BANE.y + BANE.h + 30);
+}
+
+function gaaMod(f, maal, fart, dt) {
+  const dx = maal.x - f.x, dy = maal.y - f.y;
+  const d = Math.hypot(dx, dy) || 1;
+  f.x += (dx / d) * fart * dt;
+  f.y += (dy / d) * fart * dt;
+}
+
+function opdaterFenrir(f, dt) {
+  f.trinTid -= dt;
+  if (f.trin === 'pause') {
+    gaaMod(f, spiller, 58, dt);
+    const v = Math.atan2(spiller.y - f.y, spiller.x - f.x);
+    f.mVx = Math.cos(v); f.mVy = Math.sin(v);
+    if (f.trinTid <= 0) {
+      if (f.fase2 && f.stormTal > 0 && f.stormTal % 2 === 0) { f.trin = 'tilkalder'; f.trinTid = 0.8; }
+      else { f.trin = 'varsler'; f.trinTid = mods.varsel ? 0.95 : 0.75; }
+    }
+  } else if (f.trin === 'varsler') {
+    const vink = Math.atan2(spiller.y - f.y, spiller.x - f.x);
+    const nu = Math.atan2(f.mVy, f.mVx);
+    const ny = nu + klem(vinkelDiff(vink, nu), -1.1 * dt, 1.1 * dt);
+    f.mVx = Math.cos(ny); f.mVy = Math.sin(ny);
+    if (f.trinTid <= 0) { f.trin = 'stormer'; f.trinTid = 1.5; f.stormTal++; rystning = Math.max(rystning, 7); }
+  } else if (f.trin === 'stormer') {
+    const fart = f.fase2 ? 700 : 590;
+    f.x += f.mVx * fart * dt; f.y += f.mVy * fart * dt;
+    gnister(f.x, f.y, f.fase2 ? FARVE.fenrir2 : FARVE.fenrir, 3, 0.5);
+    const vaeg = f.x <= BANE.x + f.r || f.x >= BANE.x + BANE.w - f.r ||
+                 f.y <= BANE.y + f.r || f.y >= BANE.y + BANE.h - f.r;
+    if (vaeg || f.trinTid <= 0) {
+      f.trin = 'pause'; f.trinTid = f.fase2 ? 0.55 : 0.85;
+      if (vaeg) {
+        rystning = 12; gnister(f.x, f.y, FARVE.hvid, 26, 1.4);
+        lavBurst(f.x, f.y, '#fff6e2', 1.8);
+      }
+    }
+  } else if (f.trin === 'tilkalder') {
+    if (f.trinTid <= 0) {
+      for (let i = 0; i < 3; i++) {
+        const a = tilf(0, Math.PI * 2);
+        const v = lavFjende('vaette',
+          klem(f.x + Math.cos(a) * 95, BANE.x + 20, BANE.x + BANE.w - 20),
+          klem(f.y + Math.sin(a) * 95, BANE.y + 20, BANE.y + BANE.h - 20));
+        fjender.push(v); gnister(v.x, v.y, FARVE.vaette, 18); lavRing(v.x, v.y, FARVE.vaette, 50);
+      }
+      f.trin = 'pause'; f.trinTid = 0.7;
+    }
+  } else if (f.trin === 'brol') {
+    if (f.trinTid <= 0) { f.trin = 'pause'; f.trinTid = 0.4; }
+    if (Math.random() < 0.5) gnister(f.x, f.y, FARVE.fenrir2, 2, 1.6);
+  }
+}
+
+function opdaterSkud(dt) {
+  for (const s of skud) {
+    s.x += s.vx * dt; s.y += s.vy * dt; s.spin += dt * 6;
+    if (s.x < BANE.x - 20 || s.x > BANE.x + BANE.w + 20 ||
+        s.y < BANE.y - 20 || s.y > BANE.y + BANE.h + 20) s.doed = true;
+    if (s.fjendtlig && Math.hypot(s.x - spiller.x, s.y - spiller.y) < s.r + spiller.r) {
+      s.doed = true; gnister(s.x, s.y, FARVE.kaster, 14); skadSpiller();
+    }
+  }
+  skud = skud.filter(s => !s.doed);
+}
+
+function ryddDoede() {
+  for (const f of fjender) {
+    if (!f.doed) continue;
+    const farve = f.slags === 'vaette' ? FARVE.vaette
+                : f.slags === 'kaster' ? FARVE.kaster
+                : f.slags === 'fenrir' ? FARVE.fenrir2 : FARVE.draug;
+    gnister(f.x, f.y, farve, f.slags === 'fenrir' ? 90 : 24, f.slags === 'fenrir' ? 2.2 : 1.4);
+    lavSkaar(f.x, f.y, farve, f.slags === 'fenrir' ? 12 : 3);
+    lavRing(f.x, f.y, farve, f.slags === 'fenrir' ? 300 : 70);
+    lavBurst(f.x, f.y, farve, f.slags === 'fenrir' ? 2.2 : 1.2);
+    rystning = Math.max(rystning, f.slags === 'fenrir' ? 20 : 6);
+    if (f.slags === 'fenrir') { fjender = []; return; }
+  }
+  fjender = fjender.filter(f => !f.doed);
+}
+
+function opdaterEffekter(dt) {
+  for (const q of partikler) { q.liv -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.92; q.vy *= 0.92; }
+  partikler = partikler.filter(q => q.liv > 0);
+  for (const b of lyn) b.liv -= dt;
+  lyn = lyn.filter(b => b.liv > 0);
+  for (const r of ringe) { r.liv -= dt; r.r += (r.maxR - r.r) * dt * 9; }
+  ringe = ringe.filter(r => r.liv > 0);
+  for (const s of striber) s.liv -= dt;
+  striber = striber.filter(s => s.liv > 0);
+  for (const b of bursts) b.liv -= dt;
+  bursts = bursts.filter(b => b.liv > 0);
+  for (const s of skaar) { s.liv -= dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy *= 0.97; }
+  skaar = skaar.filter(s => s.liv > 0);
+}
+
+/* ---------------------------------------------------------
+   8. BAGGRUND: STENLAG, BLUS, LYS OG KORN
+   Gulvet og stenrammen er det samme i hele spillet, så de
+   tegnes én gang til et skjult lærred og kopieres derefter
+   ind hvert billede. Det er både hurtigere og gør, at man kan
+   have flere detaljer med.
+   --------------------------------------------------------- */
+const blus = [
+  { x: BANE.x + 40,          y: BANE.y + 34 },
+  { x: BANE.x + BANE.w - 40, y: BANE.y + 34 },
+  { x: BANE.x + 40,          y: BANE.y + BANE.h - 30 },
+  { x: BANE.x + BANE.w - 40, y: BANE.y + BANE.h - 30 }
+];
+blus.forEach((b, i) => { b.fase = i * 1.7; });
+
+let fnug = [];
+for (let i = 0; i < 46; i++) {
+  fnug.push({ x: tilf(BANE.x, BANE.x + BANE.w), y: tilf(BANE.y, BANE.y + BANE.h),
+              vx: tilf(-8, 8), vy: tilf(-16, -4), s: tilf(0.6, 1.9), a: tilf(0.1, 0.4) });
+}
+function opdaterFnug(dt) {
+  for (const f of fnug) {
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    if (f.y < BANE.y - 6) { f.y = BANE.y + BANE.h + 4; f.x = tilf(BANE.x, BANE.x + BANE.w); }
+    if (f.x < BANE.x - 6) f.x = BANE.x + BANE.w + 4;
+    if (f.x > BANE.x + BANE.w + 6) f.x = BANE.x - 4;
+  }
+}
+
+// ---- korn, så fladerne ikke ser helt digitale ud ----
+let kornMonster = null;
+(function byggKorn() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const bill = g.createImageData(128, 128);
+  for (let i = 0; i < bill.data.length; i += 4) {
+    const v = 118 + Math.random() * 42;
+    bill.data[i] = bill.data[i + 1] = bill.data[i + 2] = v;
+    bill.data[i + 3] = 26;
+  }
+  g.putImageData(bill, 0, 0);
+  kornMonster = ctx.createPattern(c, 'repeat');
+})();
+
+// ---- det faste stenlag ----
+const stenLag = document.createElement('canvas');
+stenLag.width = W; stenLag.height = H;
+(function byggStenLag() {
+  const g = stenLag.getContext('2d');
+  const cx = BANE.x + BANE.w / 2, cy = BANE.y + BANE.h / 2;
+
+  /* --- gulvet --- */
+  const rg = g.createRadialGradient(cx, cy, 40, cx, cy, Math.max(BANE.w, BANE.h) * 0.72);
+  rg.addColorStop(0, P.gulvLys);
+  rg.addColorStop(0.55, '#131d42');
+  rg.addColorStop(1, P.gulvMor);
+  g.fillStyle = rg;
+  g.fillRect(BANE.x, BANE.y, BANE.w, BANE.h);
+
+  /* --- fliser med hugget kant --- */
+  const T = 71;
+  g.save();
+  g.beginPath(); g.rect(BANE.x, BANE.y, BANE.w, BANE.h); g.clip();
+  for (let i = 0; i * T < BANE.w + T; i++) {
+    for (let j = 0; j * T < BANE.h + T; j++) {
+      const x = BANE.x + i * T, y = BANE.y + j * T;
+      const w = T - 2 + fastTilf(i, j) * 3, h = T - 2 + fastTilf(j, i) * 3;
+      // mørk fuge nede/til højre
+      g.strokeStyle = 'rgba(0,0,0,0.40)'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x + w, y); g.lineTo(x + w, y + h); g.lineTo(x, y + h); g.stroke();
+      // lys kant oppe/til venstre — det er den der får stenen til at virke hugget
+      g.strokeStyle = 'rgba(150,190,255,0.055)'; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(x, y + h); g.lineTo(x, y); g.lineTo(x + w, y); g.stroke();
+      // slid
+      const n = Math.floor(fastTilf(i * 3, j * 5) * 4);
+      g.fillStyle = 'rgba(140,180,240,0.035)';
+      for (let k = 0; k < n; k++) {
+        const px = x + fastTilf(i + k, j) * w, py = y + fastTilf(j, i + k * 2) * h;
+        g.beginPath(); g.arc(px, py, 1 + fastTilf(k, i + j) * 4, 0, Math.PI * 2); g.fill();
+      }
+    }
+  }
+
+  /* --- stor runecirkel midt på gulvet --- */
+  const R = Math.min(BANE.w, BANE.h) * 0.42;
+  g.globalAlpha = 0.34;
+  g.strokeStyle = 'rgba(223,169,74,0.30)'; g.lineWidth = 2;
+  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+  g.beginPath(); g.arc(cx, cy, R * 0.9, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = 'rgba(56,227,198,0.22)'; g.lineWidth = 1.2;
+  g.beginPath(); g.arc(cx, cy, R * 0.46, 0, Math.PI * 2); g.stroke();
+  // runer rundt i cirklen
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * Math.PI * 2 - Math.PI / 2;
+    const rx = cx + Math.cos(a) * R * 0.95, ry = cy + Math.sin(a) * R * 0.95;
+    g.save();
+    g.translate(rx, ry); g.rotate(a + Math.PI / 2);
+    tegnRune(g, RUNENAVNE[i % RUNENAVNE.length], 0, 0, 11, 'rgba(223,169,74,0.42)', 1.8);
+    g.restore();
+  }
+  // valknut i midten, meget svag
+  g.globalAlpha = 0.13;
+  tegnValknut(g, cx, cy, R * 0.42, 'rgba(240,220,190,0.6)', 2.2);
+  g.globalAlpha = 1;
+  g.restore();
+
+  /* --- stenrammen om banen --- */
+  const b = RAMME;
+  const x0 = BANE.x - b, y0 = BANE.y - b, w0 = BANE.w + b * 2, h0 = BANE.h + b * 2;
+  g.save();
+  g.beginPath();
+  g.rect(x0, y0, w0, h0);
+  g.rect(BANE.x, BANE.y, BANE.w, BANE.h);
+  g.fillStyle = P.sten;
+  g.fill('evenodd');
+  // affasede kanter
+  g.strokeStyle = 'rgba(160,200,255,0.10)'; g.lineWidth = 2;
+  g.strokeRect(x0 + 1, y0 + 1, w0 - 2, h0 - 2);
+  g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 3;
+  g.strokeRect(BANE.x - 1.5, BANE.y - 1.5, BANE.w + 3, BANE.h + 3);
+  // guldlinjer
+  g.strokeStyle = 'rgba(223,169,74,0.75)'; g.lineWidth = 1.6;
+  g.strokeRect(x0 + 4.5, y0 + 4.5, w0 - 9, h0 - 9);
+  g.strokeStyle = 'rgba(223,169,74,0.45)'; g.lineWidth = 1;
+  g.strokeRect(BANE.x - 5.5, BANE.y - 5.5, BANE.w + 11, BANE.h + 11);
+  // ringkæde langs alle fire sider
+  const r = b * 0.33, m = b / 2;
+  tegnRingkaede(g, x0 + b, y0 + m, x0 + w0 - b, y0 + m, r, 'rgba(223,169,74,0.55)');
+  tegnRingkaede(g, x0 + b, y0 + h0 - m, x0 + w0 - b, y0 + h0 - m, r, 'rgba(223,169,74,0.55)');
+  tegnRingkaede(g, x0 + m, y0 + b, x0 + m, y0 + h0 - b, r, 'rgba(223,169,74,0.55)');
+  tegnRingkaede(g, x0 + w0 - m, y0 + b, x0 + w0 - m, y0 + h0 - b, r, 'rgba(223,169,74,0.55)');
+  g.restore();
+
+  /* --- hjørnemedaljoner med runer --- */
+  const hjorner = [
+    [x0 + b / 2, y0 + b / 2, 'fehu'], [x0 + w0 - b / 2, y0 + b / 2, 'uruz'],
+    [x0 + b / 2, y0 + h0 - b / 2, 'algiz'], [x0 + w0 - b / 2, y0 + h0 - b / 2, 'othala']
+  ];
+  for (const [hx, hy, rn] of hjorner) {
+    g.beginPath(); g.arc(hx, hy, b * 0.78, 0, Math.PI * 2);
+    g.fillStyle = P.stenMor; g.fill();
+    g.strokeStyle = 'rgba(223,169,74,0.85)'; g.lineWidth = 2; g.stroke();
+    g.beginPath(); g.arc(hx, hy, b * 0.62, 0, Math.PI * 2);
+    g.strokeStyle = 'rgba(223,169,74,0.35)'; g.lineWidth = 1; g.stroke();
+    tegnRune(g, rn, hx, hy, b * 0.44, 'rgba(255,225,162,0.9)', 2.2);
+  }
+
+  /* --- portbue øverst med valknut --- */
+  const px = BANE.x + BANE.w / 2;
+  g.save();
+  g.beginPath();
+  g.moveTo(px - 74, y0 + b);
+  g.lineTo(px - 74, y0 + 10);
+  g.quadraticCurveTo(px, y0 - 22, px + 74, y0 + 10);
+  g.lineTo(px + 74, y0 + b);
+  g.closePath();
+  g.fillStyle = P.sten; g.fill();
+  g.strokeStyle = 'rgba(223,169,74,0.85)'; g.lineWidth = 2; g.stroke();
+  tegnValknut(g, px, y0 + 7, 15, P.guldLys, 2);
+  g.restore();
+
+  /* --- lille plade nederst --- */
+  g.save();
+  g.beginPath();
+  g.moveTo(px - 56, y0 + h0 - b);
+  g.lineTo(px - 56, y0 + h0 - 8);
+  g.quadraticCurveTo(px, y0 + h0 + 16, px + 56, y0 + h0 - 8);
+  g.lineTo(px + 56, y0 + h0 - b);
+  g.closePath();
+  g.fillStyle = P.sten; g.fill();
+  g.strokeStyle = 'rgba(223,169,74,0.7)'; g.lineWidth = 1.8; g.stroke();
+  tegnRune(g, 'ingwaz', px, y0 + h0 - 6, 10, 'rgba(255,225,162,0.85)', 2);
+  g.restore();
+})();
+
+const BLUS_R = 230;
+blus.forEach(b => {
+  const g = ctx.createRadialGradient(b.x, b.y, 6, b.x, b.y, BLUS_R);
+  g.addColorStop(0,    'rgba(255,185,95,0.34)');
+  g.addColorStop(0.32, 'rgba(255,145,65,0.13)');
+  g.addColorStop(1,    'rgba(255,120,40,0)');
+  b.lys = g;
+});
+function tegnBlusLys() {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(BANE.x, BANE.y, BANE.w, BANE.h); ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const b of blus) {
+    // flakken er to sinusser lagt sammen, så lyset ikke pulser regelmæssigt
+    ctx.globalAlpha = 0.80 + Math.sin(tid * 7 + b.fase) * 0.13 + Math.sin(tid * 17 + b.fase * 2) * 0.07;
+    ctx.fillStyle = b.lys;
+    ctx.fillRect(b.x - BLUS_R, b.y - BLUS_R, BLUS_R * 2, BLUS_R * 2);
+  }
+  ctx.restore();
+}
+
+function tegnBlus() {
+  for (const b of blus) {
+    const flak = 0.86 + Math.sin(tid * 9 + b.fase) * 0.14;
+    // skål på tre ben
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,160,70,0.8)'; ctx.shadowBlur = 12;
+    ctx.fillStyle = '#0a0d18';
+    ctx.strokeStyle = 'rgba(233,180,90,0.95)'; ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(b.x - 19, b.y - 4);
+    ctx.lineTo(b.x + 19, b.y - 4);
+    ctx.lineTo(b.x + 11, b.y + 13);
+    ctx.lineTo(b.x - 11, b.y + 13);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(b.x - 7, b.y + 13); ctx.lineTo(b.x - 11, b.y + 23);
+    ctx.moveTo(b.x + 7, b.y + 13); ctx.lineTo(b.x + 11, b.y + 23);
+    ctx.moveTo(b.x, b.y + 13);     ctx.lineTo(b.x, b.y + 24);
+    ctx.stroke();
+    ctx.restore();
+    // flamme i tre lag
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) {
+      const h = (34 - i * 8) * flak;
+      const w = (13 - i * 3.4) * flak;
+      const slag = Math.sin(tid * 6 + i * 1.3 + b.fase) * 3.5;
+      ctx.fillStyle = i === 0 ? 'rgba(255,110,35,0.55)'
+                   : i === 1 ? 'rgba(255,175,75,0.65)' : 'rgba(255,238,200,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(b.x - w, b.y - 2);
+      ctx.bezierCurveTo(b.x - w * 1.05, b.y - h * 0.42, b.x - w * 0.5, b.y - h * 0.78,
+                        b.x + slag, b.y - h);
+      ctx.bezierCurveTo(b.x + w * 0.5, b.y - h * 0.78, b.x + w * 1.05, b.y - h * 0.42,
+                        b.x + w, b.y - 2);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+const vignetteFyld = (() => {
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.30, W / 2, H / 2, H * 0.98);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.70)');
+  return g;
+})();
+function tegnVignette() {
+  ctx.fillStyle = vignetteFyld;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function tegnKorn() {
+  if (!kornMonster) return;
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = kornMonster;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function tegnAurora() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, P.nat); g.addColorStop(1, P.natDyb);
+  ctx.fillStyle = g; ctx.fillRect(-40, -40, W + 80, H + 80);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 4; i++) {
+    const fase = tid * 0.2 + i * 1.7;
+    ctx.beginPath();
+    for (let x = -40; x <= W + 40; x += 18) {
+      const y = 34 + i * 40 + Math.sin(x * 0.0055 + fase) * 26 + Math.sin(x * 0.0135 - fase) * 12;
+      if (x === -40) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.lineWidth = 56 - i * 9;
+    ctx.strokeStyle = (i % 2) ? 'rgba(120,70,220,0.06)' : 'rgba(40,205,190,0.055)';
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ---------------------------------------------------------
+   9. TEGNING AF FIGURER
+   Alle figurer er mørke silhuetter. Helten har varm kant
+   (guld), fjenderne kolde. Forsiden af hver figur får den
+   kraftigste glød, bagsiden en svag — det er dét, der giver
+   dybden i Hades' figurer.
+   --------------------------------------------------------- */
+function tegn() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  tegnAurora();
+  if (rystning > 0.2) ctx.translate(tilf(-rystning, rystning) * 0.4, tilf(-rystning, rystning) * 0.4);
+
+  ctx.drawImage(stenLag, 0, 0);
+  if (rumIndex === 3) {                       // Fenrirs rum er rødligt
+    ctx.save();
+    ctx.beginPath(); ctx.rect(BANE.x, BANE.y, BANE.w, BANE.h); ctx.clip();
+    ctx.fillStyle = 'rgba(150,20,30,0.16)';
+    ctx.fillRect(BANE.x, BANE.y, BANE.w, BANE.h);
+    ctx.restore();
+  }
+  tegnBlusLys();
+  tegnFnug();
+  tegnVarsler();
+  tegnRinge();
+  tegnStriber();
+  tegnBlus();
+  tegnSkud();
+  tegnBoelger();
+  for (const f of fjender) tegnFjende(f);
+  if (tilstand === 'spil' || tilstand === 'overgang' || tilstand === 'doed') tegnSpiller();
+  tegnKastetSpyd();
+  tegnLyn();
+  tegnPartikler();
+  tegnSkaar();
+  tegnBursts();
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  tegnVignette();
+  tegnKorn();
+  tegnHUD();
+  tegnSkaerme();
+}
+
+function tegnFnug() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const f of fnug) {
+    ctx.fillStyle = 'rgba(180,225,255,' + f.a + ')';
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.s, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function tegnVarsler() {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(BANE.x, BANE.y, BANE.w, BANE.h); ctx.clip();
+  for (const f of fjender) {
+    if (f.slags === 'kaster' && f.varsel > 0) {
+      const vink = Math.atan2(spiller.y - f.y, spiller.x - f.x);
+      ctx.save();
+      ctx.translate(f.x, f.y); ctx.rotate(vink);
+      ctx.strokeStyle = mods.varsel ? 'rgba(255,130,140,0.8)' : FARVE.varsel;
+      ctx.lineWidth = mods.varsel ? 4 : 2;
+      ctx.setLineDash([13, 11]);
+      ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(430, 0); ctx.stroke();
+      ctx.restore();
+    }
+    if (f.slags === 'fenrir' && f.trin === 'varsler') {
+      ctx.save();
+      ctx.translate(f.x, f.y); ctx.rotate(Math.atan2(f.mVy, f.mVx));
+      const t = 1 - klem(f.trinTid / (mods.varsel ? 0.95 : 0.75), 0, 1);
+      const bredde = f.r * 1.9;
+      const g = ctx.createLinearGradient(0, 0, 1000, 0);
+      g.addColorStop(0, 'rgba(255,80,90,' + (0.16 + 0.2 * t) + ')');
+      g.addColorStop(1, 'rgba(255,80,90,0.02)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, -bredde / 2, 1000, bredde);
+      ctx.strokeStyle = 'rgba(255,150,150,' + (0.35 + 0.45 * t) + ')';
+      ctx.lineWidth = mods.varsel ? 3 : 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -bredde / 2); ctx.lineTo(1000, -bredde / 2);
+      ctx.moveTo(0, bredde / 2); ctx.lineTo(1000, bredde / 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+// fælles: skygge under en figur
+function tegnSkygge(x, y, r, h) {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + r * 0.82, r * (h || 0.95), r * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// fælles: silhuet med kold bagkant og varm/kraftig forkant
+function silhuet(pkt, fyld, forFarve, bagFarve, lwFor, lwBag) {
+  ctx.beginPath();
+  pkt.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
+  ctx.closePath();
+  ctx.fillStyle = fyld; ctx.fill();
+  // bagkant, svag
+  ctx.save();
+  ctx.strokeStyle = bagFarve; ctx.lineWidth = lwBag || 1.6;
+  ctx.stroke();
+  ctx.restore();
+  // forkant: de streger der peger fremad. Den tegnes to gange —
+  // først bredt og svagt (det er "gløden"), så smalt og skarpt.
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const n = pkt.length;
+  const fra = Math.round(n * 0.78), til = Math.round(n * 0.24);
+  ctx.beginPath();
+  let i = fra;
+  ctx.moveTo(pkt[i % n][0], pkt[i % n][1]);
+  while (i % n !== til) { i++; ctx.lineTo(pkt[i % n][0], pkt[i % n][1]); }
+  ctx.globalAlpha = 0.30;
+  ctx.shadowColor = forFarve; ctx.shadowBlur = 24;
+  ctx.strokeStyle = forFarve; ctx.lineWidth = (lwFor || 2.3) * 2.6;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 14;
+  ctx.lineWidth = lwFor || 2.3;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// spydet, tegnet fra figurens midte og fremad
+function tegnSpydet(laengde, glodfarve) {
+  ctx.save();
+  ctx.shadowColor = glodfarve; ctx.shadowBlur = 14;
+  ctx.strokeStyle = '#131a2c'; ctx.lineWidth = 5.4;
+  ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(laengde - 18, 0); ctx.stroke();
+  ctx.strokeStyle = glodfarve; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(laengde - 18, 0); ctx.stroke();
+  // bindsel af læder
+  ctx.strokeStyle = P.guldMor; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(laengde - 40, 0); ctx.lineTo(laengde - 32, 0); ctx.stroke();
+  // blad
+  ctx.beginPath();
+  ctx.moveTo(laengde, 0);
+  ctx.lineTo(laengde - 24, -8);
+  ctx.lineTo(laengde - 17, 0);
+  ctx.lineTo(laengde - 24, 8);
+  ctx.closePath();
+  ctx.fillStyle = '#0b1120'; ctx.fill();
+  ctx.strokeStyle = glodfarve; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+}
+
+const heltLys = (() => {
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 54);
+  g.addColorStop(0,   'rgba(255,205,130,0.26)');
+  g.addColorStop(0.5, 'rgba(255,175,90,0.09)');
+  g.addColorStop(1,   'rgba(255,160,70,0)');
+  return g;
+})();
+function tegnSpiller() {
+  const p = spiller;
+  // varmt skær omkring helten — sådan holder Hades sin figur læsbar
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.translate(p.x, p.y);
+  ctx.fillStyle = heltLys;
+  ctx.fillRect(-58, -58, 116, 116);
+  ctx.restore();
+  tegnSkygge(p.x, p.y, p.r);
+
+  if (p.skjold > 0) {
+    ctx.save();
+    ctx.shadowColor = '#ffab64'; ctx.shadowBlur = 18;
+    ctx.strokeStyle = 'rgba(255,180,110,' + (0.55 + Math.sin(tid * 7) * 0.2) + ')';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 12, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  const blinker = p.usaarlig > 0 && Math.floor(p.usaarlig * 12) % 2 === 0;
+  const r = p.r;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.retning);
+  ctx.globalAlpha = blinker ? 0.45 : 1;
+
+  /* --- kappen, der slæber bagud --- */
+  ctx.save();
+  const flagr = Math.sin(tid * 4) * r * 0.12;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.15, -r * 0.9);
+  ctx.quadraticCurveTo(-r * 1.7, -r * 0.75 + flagr, -r * 2.0, flagr);
+  ctx.quadraticCurveTo(-r * 1.7, r * 0.75 + flagr, -r * 0.15, r * 0.9);
+  ctx.closePath();
+  ctx.fillStyle = '#080b18'; ctx.fill();
+  ctx.strokeStyle = 'rgba(170,145,215,0.55)'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.restore();
+
+  /* --- spydet: hviler i højre hånd, skyder frem under stødet --- */
+  if (!p.spydUde) {
+    ctx.save();
+    if (p.stodAnim > 0) {
+      const t = 1 - p.stodAnim / STOD_ANIM;
+      const ud = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7 * 0.55;
+      ctx.translate(0, r * 0.3);
+      tegnSpydet(30 + (p.stodRaek || mods.raek) * ud * 0.95, p.stodLang ? FARVE.dash : P.guldLys);
+    } else {
+      ctx.translate(0, r * 0.55); ctx.rotate(-0.38);
+      tegnSpydet(mods.raek * 0.44, 'rgba(255,225,162,0.8)');
+    }
+    ctx.restore();
+    // arm ud til skaftet
+    ctx.save();
+    ctx.shadowColor = P.guldLys; ctx.shadowBlur = 8;
+    ctx.strokeStyle = 'rgba(255,225,162,0.85)'; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(r * 0.1, r * 0.5);
+    ctx.lineTo(r * 0.5, r * (p.stodAnim > 0 ? 0.3 : 0.5));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* --- kroppen: skuldre bredere end de er dybe --- */
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.66, r * 0.95, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a0f1e'; ctx.fill();
+  ctx.strokeStyle = 'rgba(200,175,230,0.8)'; ctx.lineWidth = 1.8; ctx.stroke();
+  // varm kant på forsiden, i to lag
+  ctx.shadowColor = P.guldLys; ctx.shadowBlur = 22;
+  ctx.globalAlpha = 0.32; ctx.strokeStyle = P.guldLys; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.66, r * 0.95, 0, -1.35, 1.35); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.shadowBlur = 13; ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.66, r * 0.95, 0, -1.35, 1.35); ctx.stroke();
+  ctx.restore();
+
+  /* --- rundskjoldet på venstre arm --- */
+  ctx.save();
+  ctx.translate(-r * 0.12, -r * 0.98);
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.54, 0, Math.PI * 2);
+  ctx.fillStyle = '#090d1a'; ctx.fill();
+  ctx.shadowColor = P.guldLys; ctx.shadowBlur = 12;
+  ctx.strokeStyle = P.guld; ctx.lineWidth = 2.2; ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,225,162,0.55)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2); ctx.stroke();
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2 + 0.3;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r * 0.23, Math.sin(a) * r * 0.23);
+    ctx.lineTo(Math.cos(a) * r * 0.47, Math.sin(a) * r * 0.47);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  /* --- hovedet med hjelm og næseskinne --- */
+  ctx.save();
+  ctx.translate(r * 0.8, 0);
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2);
+  ctx.fillStyle = '#070b16'; ctx.fill();
+  ctx.shadowColor = P.guldLys; ctx.shadowBlur = 18;
+  ctx.strokeStyle = P.guldLys; ctx.lineWidth = 2.4; ctx.stroke();
+  // hjelmkam og næseskinne
+  ctx.shadowBlur = 8; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.4, -1.55, 1.55); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r * 0.1, 0); ctx.lineTo(r * 0.56, 0); ctx.stroke();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function tegnKastetSpyd() {
+  const k = kastetSpyd;
+  if (!k) return;
+  ctx.save();
+  ctx.translate(k.x, k.y); ctx.rotate(k.spin); ctx.translate(-32, 0);
+  tegnSpydet(64, P.guldLys);
+  ctx.restore();
+}
+
+// lille hjælper: et hoved med glødende kant
+function tegnHoved(x, y, rr, glod, hjelmSpids) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2);
+  ctx.fillStyle = '#070512'; ctx.fill();
+  ctx.shadowColor = glod; ctx.shadowBlur = 14;
+  ctx.strokeStyle = glod; ctx.lineWidth = 2; ctx.stroke();
+  if (hjelmSpids) {
+    ctx.beginPath();
+    ctx.moveTo(x - rr * 0.55, y - rr * 0.7);
+    ctx.lineTo(x + rr * 1.25, y);
+    ctx.lineTo(x - rr * 0.55, y + rr * 0.7);
+    ctx.closePath();
+    ctx.fillStyle = '#070512'; ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function tegnFjende(f) {
+  if (f.slags === 'fenrir') { tegnSkygge(f.x, f.y, f.r, 1.35); tegnFenrir(f); return; }
+  tegnSkygge(f.x, f.y, f.r);
+
+  const grund = f.slags === 'vaette' ? FARVE.vaette
+              : f.slags === 'kaster' ? FARVE.kaster : FARVE.draug;
+  const glod = f.blink > 0 ? '#ffffff' : (f.forvirret > 0 ? '#72ffae' : grund);
+  const bag  = f.blink > 0 ? '#ffffff' : 'rgba(150,140,205,0.8)';
+  const fyld = f.blink > 0 ? 'rgba(255,255,255,0.9)' : '#0b0918';
+  const r = f.r;
+
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.vender + (f.forvirret > 0 ? Math.sin(f.fase * 2) * 0.5 : 0));
+
+  if (f.slags === 'draug') {
+    // ludende genganger i lasede klæder
+    const vug = Math.sin(f.fase) * r * 0.08;
+    silhuet([
+      [ r * 0.6, -r * 0.52], [ r * 0.22, -r * 0.95], [-r * 0.35, -r * 1.0],
+      [-r * 0.9, -r * 0.45], [-r * 1.05 + vug, 0], [-r * 0.75, r * 0.45],
+      [-r * 0.35, r * 0.7], [-r * 0.12, r * 1.1], [ r * 0.12, r * 0.66],
+      [ r * 0.36, r * 1.0], [ r * 0.5, r * 0.55], [ r * 0.6, r * 0.52]
+    ], fyld, glod, bag, 3.0, 1.8);
+    tegnHoved(r * 0.92, 0, r * 0.34, glod, true);
+    // arm med brudt klinge
+    ctx.save();
+    ctx.shadowColor = glod; ctx.shadowBlur = 12;
+    ctx.strokeStyle = glod; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
+    const sving = Math.sin(f.fase) * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.05, -r * 0.6);
+    ctx.lineTo(r * 0.85, -r * 0.95 + sving * r);
+    ctx.stroke();
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.85, -r * 0.95 + sving * r);
+    ctx.lineTo(r * 1.4, -r * 1.15 + sving * r);
+    ctx.stroke();
+    ctx.restore();
+    tegnOjne(r * 0.9, r * 0.13, r * 0.085);
+
+  } else if (f.slags === 'vaette') {
+    // lille, hurtigt kryb med spidse ører og kløer
+    silhuet([
+      [ r * 0.42, -r * 0.52], [ r * 0.05, -r * 0.85], [-r * 0.6, -r * 0.75],
+      [-r * 1.0, 0], [-r * 0.6, r * 0.75], [ r * 0.05, r * 0.85], [ r * 0.42, r * 0.52]
+    ], fyld, glod, bag, 2.6, 1.6);
+    tegnHoved(r * 0.72, 0, r * 0.4, glod, false);
+    ctx.save();
+    ctx.shadowColor = glod; ctx.shadowBlur = 12;
+    ctx.strokeStyle = glod; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    const spjaet = Math.sin(f.fase * 2.2) * r * 0.12;
+    ctx.beginPath();
+    // ører
+    ctx.moveTo(r * 0.62, -r * 0.28); ctx.lineTo(r * 0.05, -r * 1.05 + spjaet);
+    ctx.moveTo(r * 0.62,  r * 0.28); ctx.lineTo(r * 0.05,  r * 1.05 - spjaet);
+    // kløer
+    ctx.moveTo(r * 0.35, -r * 0.6);  ctx.lineTo(r * 0.95, -r * 0.78 + spjaet);
+    ctx.moveTo(r * 0.35,  r * 0.6);  ctx.lineTo(r * 0.95,  r * 0.78 - spjaet);
+    ctx.stroke();
+    ctx.restore();
+    tegnOjne(r * 0.78, r * 0.15, r * 0.095);
+
+  } else {
+    // jættekaster: bred krop, lille hoved, sten løftet frem
+    silhuet([
+      [ r * 0.48, -r * 0.62], [ r * 0.18, -r * 1.05], [-r * 0.45, -r * 1.1],
+      [-r * 0.95, -r * 0.45], [-r * 0.9, r * 0.45], [-r * 0.45, r * 1.1],
+      [ r * 0.18, r * 1.05], [ r * 0.48, r * 0.62]
+    ], fyld, glod, bag, 3.2, 1.9);
+    // arme op mod stenen
+    ctx.save();
+    ctx.shadowColor = glod; ctx.shadowBlur = 10;
+    ctx.strokeStyle = glod; ctx.lineWidth = 3.4; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(r * 0.25, -r * 0.78); ctx.lineTo(r * 1.25, -r * 0.34);
+    ctx.moveTo(r * 0.25,  r * 0.78); ctx.lineTo(r * 1.25,  r * 0.34);
+    ctx.stroke();
+    ctx.restore();
+    tegnHoved(r * 0.76, 0, r * 0.3, glod, false);
+    // stenen
+    const rys = f.varsel > 0 ? tilf(-2, 2) : 0;
+    ctx.save();
+    ctx.translate(r * 1.62 + rys, rys);
+    ctx.rotate(f.fase * 0.2);
+    ctx.shadowColor = f.varsel > 0 ? '#ffd98a' : glod;
+    ctx.shadowBlur = f.varsel > 0 ? 24 : 12;
+    ctx.beginPath();
+    for (let i = 0; i < 7; i++) {
+      const a = i / 7 * Math.PI * 2;
+      const rr = r * (0.42 + (i % 2 ? 0.05 : 0.12));
+      if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#0d0a16'; ctx.fill();
+    ctx.strokeStyle = f.varsel > 0 ? '#ffd98a' : glod; ctx.lineWidth = 2.4; ctx.stroke();
+    ctx.restore();
+    tegnOjne(r * 0.82, r * 0.12, r * 0.075);
+  }
+
+  ctx.restore();
+}
+
+// to glødende øjne
+function tegnOjne(x, spred, str) {
+  ctx.save();
+  ctx.shadowColor = FARVE.oje; ctx.shadowBlur = 10;
+  ctx.fillStyle = FARVE.oje;
+  ctx.beginPath(); ctx.arc(x, -spred, str, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x,  spred, str, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function tegnFenrir(f) {
+  const glod = f.blink > 0 ? '#ffffff' : (f.fase2 ? FARVE.fenrir2 : FARVE.fenrir);
+  const bag  = f.fase2 ? 'rgba(225,120,125,0.85)' : 'rgba(130,175,220,0.85)';
+  const vink = Math.atan2(f.mVy, f.mVx) || 0;
+  const puls = f.trin === 'varsler' ? 1 + (1 - f.trinTid) * 0.06 : 1;
+  const r = f.r;
+  const takt = Math.sin(f.fase * (f.trin === 'stormer' ? 4 : 1.4)) * r * 0.3;
+
+  ctx.save();
+  ctx.translate(f.x, f.y); ctx.rotate(vink); ctx.scale(puls, puls);
+
+  // brudt Gleipnir — lænken han slap fri af, slæber stadig efter ham
+  ctx.save();
+  ctx.shadowColor = f.fase2 ? FARVE.fenrir2 : P.guldLys;
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = f.fase2 ? 'rgba(255,140,130,0.9)' : 'rgba(223,169,74,0.85)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 4; i++) {
+    const t = i / 4;
+    const lx = -r * (1.5 + t * 1.5), ly = takt * (0.5 + t) * 0.9;
+    ctx.beginPath();
+    ctx.ellipse(lx, ly, r * 0.19, r * 0.11, ly * 0.02, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // ben og hale
+  ctx.save();
+  ctx.shadowColor = glod; ctx.shadowBlur = 12;
+  ctx.strokeStyle = glod; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(r * 0.55, -r * 0.6);  ctx.lineTo(r * 0.6 + takt, -r * 1.2);
+  ctx.moveTo(r * 0.55,  r * 0.6);  ctx.lineTo(r * 0.6 - takt,  r * 1.2);
+  ctx.moveTo(-r * 0.7, -r * 0.6);  ctx.lineTo(-r * 0.75 - takt, -r * 1.25);
+  ctx.moveTo(-r * 0.7,  r * 0.6);  ctx.lineTo(-r * 0.75 + takt,  r * 1.25);
+  ctx.stroke();
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.35, 0);
+  ctx.quadraticCurveTo(-r * 1.95, takt * 0.9, -r * 2.25, takt * 2.2);
+  ctx.stroke();
+  ctx.restore();
+
+  // kroppen med snude
+  silhuet([
+    [ r * 1.78, 0], [ r * 1.15, -r * 0.3], [ r * 0.75, -r * 0.62], [ r * 0.2, -r * 0.9],
+    [-r * 0.7, -r * 0.85], [-r * 1.4, -r * 0.3], [-r * 1.2, 0], [-r * 1.4, r * 0.3],
+    [-r * 0.7, r * 0.85], [ r * 0.2, r * 0.9], [ r * 0.75, r * 0.62], [ r * 1.15, r * 0.3]
+  ], f.blink > 0 ? 'rgba(255,255,255,0.85)' : '#0a0714', glod, bag, 3.4, 2.0);
+
+  // pelstakker langs ryggen, ører og runer
+  ctx.save();
+  ctx.shadowColor = glod; ctx.shadowBlur = 14;
+  ctx.strokeStyle = glod; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(r * 0.55, -r * 0.72); ctx.lineTo(r * 0.3, -r * 1.42); ctx.lineTo(r * 0.02, -r * 0.9);
+  ctx.moveTo(r * 0.55,  r * 0.72); ctx.lineTo(r * 0.3,  r * 1.42); ctx.lineTo(r * 0.02,  r * 0.9);
+  ctx.stroke();
+  ctx.lineWidth = 1.5; ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const x = -r * 0.95 + i * r * 0.42;
+    ctx.moveTo(x, -r * 0.38); ctx.lineTo(x + r * 0.18, 0); ctx.lineTo(x, r * 0.38);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // øjne og gab
+  ctx.save();
+  ctx.shadowColor = f.fase2 ? FARVE.fenrir2 : FARVE.oje; ctx.shadowBlur = 16;
+  ctx.fillStyle = f.fase2 ? '#ff9a94' : FARVE.oje;
+  ctx.beginPath(); ctx.arc(r * 0.78, -r * 0.34, 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r * 0.78,  r * 0.34, 3.2, 0, Math.PI * 2); ctx.fill();
+  if (f.trin === 'stormer' || f.trin === 'brol') {
+    ctx.strokeStyle = f.fase2 ? '#ffb6b0' : '#cfeeff'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(r * 1.22, -r * 0.26); ctx.lineTo(r * 1.74, 0); ctx.lineTo(r * 1.22, r * 0.26);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+function tegnSkud() {
+  for (const s of skud) {
+    ctx.save();
+    ctx.translate(s.x, s.y); ctx.rotate(s.spin);
+    ctx.shadowColor = FARVE.kaster; ctx.shadowBlur = 14;
+    ctx.fillStyle = '#0f0a12';
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2, rr = s.r * (i % 2 ? 0.8 : 1.1);
+      if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = FARVE.kaster; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function tegnBoelger() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const b of boelger) {
+    const a = klem(b.liv / b.maxLiv, 0, 1);
+    ctx.save();
+    ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx));
+    ctx.shadowColor = '#93bcff'; ctx.shadowBlur = 18;
+    ctx.strokeStyle = 'rgba(180,215,255,' + a + ')'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 19, -0.9, 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 11, -1.1, 1.1); ctx.stroke();
+    tegnRune(ctx, 'raidho', 4, 0, 8, 'rgba(210,230,255,' + a + ')', 1.6);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function tegnLyn() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const b of lyn) {
+    const a = klem(b.liv / b.maxLiv, 0, 1);
+    ctx.shadowColor = '#ffcf5e'; ctx.shadowBlur = 26;
+    ctx.strokeStyle = 'rgba(255,240,190,' + a + ')'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    b.pkt.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function tegnRinge() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const r of ringe) {
+    const a = klem(r.liv / r.maxLiv, 0, 1);
+    ctx.shadowColor = r.farve; ctx.shadowBlur = 18;
+    ctx.strokeStyle = r.farve; ctx.globalAlpha = a * 0.8;
+    ctx.lineWidth = 2 + 4 * a;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function tegnStriber() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of striber) {
+    const a = klem(s.liv / s.maxLiv, 0, 1);
+    ctx.save();
+    ctx.translate(s.x, s.y); ctx.rotate(s.retning);
+    const g = ctx.createLinearGradient(0, 0, s.laengde, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.6, s.farve);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = a * 0.85;
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(s.laengde / 2, 0, s.laengde / 2, s.bredde / 2 * (0.35 + a * 0.65), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// stjerneglimt ved træf
+function tegnBursts() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const b of bursts) {
+    const t = klem(b.liv / b.maxLiv, 0, 1);
+    const R = (16 + 30 * (1 - t)) * b.str;
+    ctx.save();
+    ctx.translate(b.x, b.y); ctx.rotate(b.drej);
+    ctx.fillStyle = b.farve;
+    ctx.globalAlpha = t;
+    ctx.shadowColor = b.farve; ctx.shadowBlur = 20;
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * Math.PI * 2;
+      const lang = R * (i % 2 ? 0.55 : 1);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * lang, Math.sin(a) * lang);
+      ctx.lineTo(Math.cos(a + 0.34) * lang * 0.2, Math.sin(a + 0.34) * lang * 0.2);
+      ctx.lineTo(Math.cos(a - 0.34) * lang * 0.2, Math.sin(a - 0.34) * lang * 0.2);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// runeskår der stiger op fra faldne fjender
+function tegnSkaar() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of skaar) {
+    const a = klem(s.liv / s.maxLiv, 0, 1);
+    ctx.save();
+    ctx.translate(s.x, s.y); ctx.rotate(s.drej);
+    ctx.globalAlpha = a;
+    ctx.shadowColor = s.farve; ctx.shadowBlur = 12;
+    tegnRune(ctx, s.rune, 0, 0, s.s, s.farve, 1.8);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function tegnPartikler() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const q of partikler) {
+    const a = klem(q.liv / q.maxLiv, 0, 1);
+    ctx.globalAlpha = a; ctx.fillStyle = q.farve;
+    ctx.beginPath(); ctx.arc(q.x, q.y, q.str * a + 0.5, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---------------------------------------------------------
+   10. HUD OG SKÆRME
+   --------------------------------------------------------- */
+function tekstSpredt(t, x, y, sp) {
+  const tegnBredder = Array.from(t).map(c => ctx.measureText(c).width);
+  const total = tegnBredder.reduce((a, b) => a + b, 0) + sp * (t.length - 1);
+  let cx = x - total / 2;
+  Array.from(t).forEach((c, i) => {
+    ctx.fillText(c, cx + tegnBredder[i] / 2, y);
+    cx += tegnBredder[i] + sp;
+  });
+}
+function tekstMedKant(t, x, y, fyld, kantBredde) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(2,3,10,0.9)'; ctx.lineWidth = kantBredde || 5;
+  ctx.lineJoin = 'round';
+  ctx.strokeText(t, x, y);
+  ctx.fillStyle = fyld; ctx.fillText(t, x, y);
+  ctx.restore();
+}
+
+// lille stenplade med guldkant — bruges bag tekst
+function tegnPlade(x, y, b, h, alfa) {
+  ctx.save();
+  ctx.globalAlpha = alfa === undefined ? 1 : alfa;
+  ctx.beginPath();
+  const s = 9;
+  ctx.moveTo(x + s, y);
+  ctx.lineTo(x + b - s, y); ctx.lineTo(x + b, y + h / 2); ctx.lineTo(x + b - s, y + h);
+  ctx.lineTo(x + s, y + h); ctx.lineTo(x, y + h / 2);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(12,17,34,0.88)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(223,169,74,0.6)'; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.restore();
+}
+
+function hjerteSti(x, y, s) {
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.35);
+  ctx.bezierCurveTo(x, y - s * 0.1, x - s, y - s * 0.15, x - s, y - s * 0.55);
+  ctx.bezierCurveTo(x - s, y - s * 1.1, x - s * 0.15, y - s * 1.05, x, y - s * 0.6);
+  ctx.bezierCurveTo(x + s * 0.15, y - s * 1.05, x + s, y - s * 1.1, x + s, y - s * 0.55);
+  ctx.bezierCurveTo(x + s, y - s * 0.15, x, y - s * 0.1, x, y + s * 0.35);
+  ctx.closePath();
+}
+
+function tegnHUD() {
+  if (tilstand === 'start') return;
+
+  // liv
+  tegnPlade(18, 24, 26 + spiller.maxHjerter * 30, 34, 0.95);
+  for (let i = 0; i < spiller.maxHjerter; i++) {
+    const x = 44 + i * 30, y = 47, fuld = i < spiller.hjerter;
+    ctx.save();
+    if (fuld) { ctx.shadowColor = FARVE.hjerte; ctx.shadowBlur = 13; }
+    hjerteSti(x, y, 10);
+    ctx.fillStyle = fuld ? FARVE.hjerte : 'rgba(255,255,255,0.05)';
+    ctx.fill();
+    ctx.strokeStyle = fuld ? 'rgba(255,225,162,0.85)' : 'rgba(223,169,74,0.28)';
+    ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.restore();
+  }
+
+  // dash og spydkast
+  const bundY = H - 34;
+  tegnPlade(18, bundY - 17, 74 + mods.dashMax * 24, 34, 0.95);
+  for (let i = 0; i < mods.dashMax; i++) {
+    const x = 40 + i * 24, klar = i < spiller.dashLadning;
+    ctx.save();
+    if (klar) { ctx.shadowColor = FARVE.dash; ctx.shadowBlur = 12; }
+    tegnRune(ctx, 'sowilo', x, bundY, 9, klar ? FARVE.dash : 'rgba(255,255,255,0.13)', 2.4);
+    ctx.restore();
+  }
+  const kastKlar = !spiller.spydUde && spiller.kastAfkoling <= 0;
+  ctx.save();
+  ctx.translate(46 + mods.dashMax * 24, bundY);
+  ctx.rotate(-0.62);
+  ctx.globalAlpha = kastKlar ? 1 : 0.25;
+  tegnSpydet(24, kastKlar ? P.guldLys : 'rgba(220,200,170,0.6)');
+  ctx.restore();
+
+  // rummets navn på en plade øverst
+  const navn = RUM[Math.min(rumIndex, 3)];
+  const titel = rumIndex < 3
+    ? 'PORT ' + (rumIndex + 1) + ' AF 3  ·  ' + navn.undertitel.toUpperCase()
+    : 'FENRIR  ·  ULVEN VENTER';
+  ctx.font = 'bold 15px ' + F_TITEL;
+  const tb = ctx.measureText(titel).width + 60;
+  tegnPlade(W / 2 - tb / 2, 24, tb, 30, 0.95);
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = P.guldLys;
+  ctx.font = 'bold 15px ' + F_TITEL;
+  ctx.fillText(titel, W / 2, 40);
+  ctx.restore();
+
+  // Fenrirs livsbjælke
+  const boss = fjender.find(f => f.slags === 'fenrir');
+  if (boss) {
+    // Fenrirs livsbjælke ligger inde på banen, så den ikke støder ind i stenrammen
+    const b = 420, x = (W - b) / 2, y = BANE.y + 16;
+    ctx.save();
+    ctx.fillStyle = 'rgba(6,9,20,0.82)';
+    ctx.fillRect(x - 4, y - 4, b + 8, 17);
+    ctx.strokeStyle = 'rgba(223,169,74,0.85)'; ctx.lineWidth = 1.4;
+    ctx.strokeRect(x - 4, y - 4, b + 8, 17);
+    const andel = klem(boss.liv / boss.maxLiv, 0, 1);
+    ctx.shadowColor = boss.fase2 ? FARVE.fenrir2 : FARVE.fenrir; ctx.shadowBlur = 14;
+    ctx.fillStyle = boss.fase2 ? FARVE.fenrir2 : FARVE.fenrir;
+    ctx.fillRect(x, y, b * andel, 9);
+    ctx.shadowBlur = 0;
+    // mærke ved halvvejs, hvor han skifter fase
+    ctx.fillStyle = 'rgba(255,225,162,0.7)';
+    ctx.fillRect(x + b / 2 - 1, y - 5, 2, 19);
+    // ulverune i hver ende
+    tegnRune(ctx, 'algiz', x - 16, y + 4, 7, 'rgba(223,169,74,0.9)', 1.6);
+    tegnRune(ctx, 'algiz', x + b + 16, y + 4, 7, 'rgba(223,169,74,0.9)', 1.6);
+    ctx.restore();
+  } else if (tilstand === 'spil') {
+    ctx.save();
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.font = '15px ' + F_BROD;
+    const t = 'Fjender  ' + fjender.length;
+    const bb = ctx.measureText(t).width + 34;
+    tegnPlade(W - 18 - bb, 24, bb, 30, 0.95);
+    ctx.fillStyle = 'rgba(243,232,212,0.85)';
+    ctx.fillText(t, W - 35, 40);
+    ctx.restore();
+  }
+
+  // valgte velsignelser: en række langs nederste kant, højrestillet
+  if (valgteVelsignelser.length) {
+    ctx.save();
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    ctx.font = '13.5px ' + F_BROD;
+    const y = H - 17;
+    const bidder = valgteVelsignelser.map(v => ({ v, b: ctx.measureText(v.navn).width + 30 }));
+    const total = bidder.reduce((a, d) => a + d.b, 0) + 18;
+    tegnPlade(W - 18 - total, y - 15, total, 30, 0.92);
+    let x = W - 18 - total + 12;
+    for (const d of bidder) {
+      const gud = GUDER.find(g => g.navn === d.v.gud);
+      if (gud) tegnGudeSigil(ctx, gud.navn, x + 8, y, 7.5, d.v.farve, true);
+      ctx.shadowColor = d.v.farve; ctx.shadowBlur = 7;
+      ctx.fillStyle = d.v.farve;
+      ctx.fillText(d.v.navn, x + 22, y);
+      ctx.shadowBlur = 0;
+      x += d.b;
+    }
+    ctx.restore();
+  }
+
+  // rummets navn stort, når man kommer ind
+  if (rumTekstTid > 0) {
+    const a = klem(rumTekstTid / 0.9, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    tegnRune(ctx, navn.rune, W / 2, H / 2 - 84, 26, 'rgba(255,225,162,0.75)', 3);
+    ctx.font = 'bold 46px ' + F_TITEL;
+    tekstSpredt(navn.navn, W / 2, H / 2 - 16, 7);
+    ctx.strokeStyle = 'rgba(2,3,10,0.85)'; ctx.lineWidth = 5;
+    ctx.font = 'bold 46px ' + F_TITEL;
+    ctx.fillStyle = P.guldLys;
+    ctx.shadowColor = P.guld; ctx.shadowBlur = 26;
+    tekstSpredt(navn.navn, W / 2, H / 2 - 16, 7);
+    ctx.shadowBlur = 0;
+    ctx.font = 'italic 21px ' + F_BROD;
+    ctx.fillStyle = 'rgba(243,232,212,0.85)';
+    ctx.fillText(navn.undertitel, W / 2, H / 2 + 22);
+    // ornamentstreger
+    ctx.strokeStyle = 'rgba(223,169,74,0.6)'; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 150, H / 2 + 48); ctx.lineTo(W / 2 - 14, H / 2 + 48);
+    ctx.moveTo(W / 2 + 14, H / 2 + 48); ctx.lineTo(W / 2 + 150, H / 2 + 48);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(W / 2, H / 2 + 42); ctx.lineTo(W / 2 + 7, H / 2 + 48);
+    ctx.lineTo(W / 2, H / 2 + 54); ctx.lineTo(W / 2 - 7, H / 2 + 48);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(223,169,74,0.8)'; ctx.fill();
+    ctx.restore();
+  }
+}
+
+function slorBaggrund(styrke) {
+  ctx.fillStyle = 'rgba(2,3,10,' + styrke + ')';
+  ctx.fillRect(0, 0, W, H);
+}
+function brydTekst(tekst, maxB) {
+  const ord = tekst.split(' ');
+  const linjer = []; let l = '';
+  for (const o of ord) {
+    const proev = l ? l + ' ' + o : o;
+    if (ctx.measureText(proev).width > maxB && l) { linjer.push(l); l = o; }
+    else l = proev;
+  }
+  if (l) linjer.push(l);
+  return linjer;
+}
+// vandret ornament: linje – diamant – linje
+function tegnDeler(x, y, b, farve) {
+  ctx.save();
+  ctx.strokeStyle = farve; ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(x - b / 2, y); ctx.lineTo(x - 8, y);
+  ctx.moveTo(x + 8, y); ctx.lineTo(x + b / 2, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y);
+  ctx.closePath();
+  ctx.fillStyle = farve; ctx.fill();
+  ctx.restore();
+}
+
+// et velsignelseskort: stentavle med rundbue, medaljon og guldkant
+function tegnKort(kort, i) {
+  const r = kortRamme(i);
+  const over = mus.x >= r.x && mus.x <= r.x + r.b && mus.y >= r.y - 14 && mus.y <= r.y + r.h;
+  const løft = over ? -9 : 0;
+  const f = kort.gud.farve;
+  const x = r.x, y = r.y + løft, b = r.b, h = r.h;
+  const bue = 62;
+
+  function tavleSti() {
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x, y + bue);
+    ctx.quadraticCurveTo(x, y, x + b / 2, y);
+    ctx.quadraticCurveTo(x + b, y, x + b, y + bue);
+    ctx.lineTo(x + b, y + h);
+    ctx.closePath();
+  }
+
+  ctx.save();
+  ctx.shadowColor = f; ctx.shadowBlur = over ? 40 : 18;
+  tavleSti();
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, over ? 'rgba(30,40,68,0.99)' : 'rgba(17,24,45,0.97)');
+  g.addColorStop(1, 'rgba(8,12,24,0.99)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = f; ctx.lineWidth = over ? 3 : 2; ctx.stroke();
+  ctx.restore();
+
+  // indre guldlinje
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  ctx.moveTo(x + 7, y + h - 7);
+  ctx.lineTo(x + 7, y + bue);
+  ctx.quadraticCurveTo(x + 7, y + 8, x + b / 2, y + 8);
+  ctx.quadraticCurveTo(x + b - 7, y + 8, x + b - 7, y + bue);
+  ctx.lineTo(x + b - 7, y + h - 7);
+  ctx.closePath();
+  ctx.strokeStyle = P.guld; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+
+  // medaljon med gudens sigil
+  const mx = x + b / 2, my = y + 74;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(mx, my, 36, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(5,8,18,0.95)'; ctx.fill();
+  ctx.strokeStyle = P.guld; ctx.lineWidth = 1.8; ctx.stroke();
+  ctx.beginPath(); ctx.arc(mx, my, 31, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(223,169,74,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+  tegnGudeSigil(ctx, kort.gud.navn, mx, my, 20, f, true);
+
+  // nummerbrik
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x + 24, y + bue + 12, 14, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(5,8,18,0.95)'; ctx.fill();
+  ctx.strokeStyle = P.guld; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.fillStyle = P.guldLys;
+  ctx.font = 'bold 15px ' + F_TITEL;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(i + 1), x + 24, y + bue + 13);
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  // gudens navn
+  ctx.font = '13px ' + F_BROD;
+  ctx.fillStyle = 'rgba(243,232,212,0.6)';
+  tekstSpredt(kort.gud.navn + '  ·  ' + kort.gud.titel.toUpperCase(), mx, my + 52, 1.6);
+
+  // velsignelsens navn
+  ctx.font = 'bold 22px ' + F_TITEL;
+  ctx.shadowColor = f; ctx.shadowBlur = 14;
+  ctx.fillStyle = P.ben;
+  const navnLinjer = brydTekst(kort.v.navn, b - 40);
+  navnLinjer.forEach((l, j) => ctx.fillText(l, mx, my + 84 + j * 26));
+  ctx.shadowBlur = 0;
+
+  const efterNavn = my + 84 + navnLinjer.length * 26;
+  tegnDeler(mx, efterNavn - 2, b - 74, 'rgba(223,169,74,0.7)');
+
+  // beskrivelse
+  ctx.font = '16.5px ' + F_BROD;
+  ctx.fillStyle = 'rgba(233,224,205,0.9)';
+  brydTekst(kort.v.tekst, b - 44).forEach((l, j) => ctx.fillText(l, mx, efterNavn + 24 + j * 23));
+  ctx.restore();
+}
+
+function tegnSkaerme() {
+  if (tilstand === 'start') {
+    slorBaggrund(0.6);
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+    // stor valknut bag titlen
+    ctx.globalAlpha = 0.10;
+    tegnValknut(ctx, W / 2, 168, 86, P.guldLys, 3);
+    ctx.globalAlpha = 1;
+
+    ctx.font = 'bold 62px ' + F_TITEL;
+    ctx.strokeStyle = 'rgba(2,3,10,0.9)'; ctx.lineWidth = 7; ctx.lineJoin = 'round';
+    ctx.fillStyle = P.guldLys;
+    ctx.shadowColor = P.guld; ctx.shadowBlur = 34;
+    tekstSpredt('VALHALS PORTE', W / 2, 168, 6);
+    ctx.shadowBlur = 0;
+
+    tegnDeler(W / 2, 208, 420, 'rgba(223,169,74,0.75)');
+
+    ctx.font = 'italic 20px ' + F_BROD;
+    ctx.fillStyle = 'rgba(243,232,212,0.9)';
+    ctx.fillText('Du er en nyfalden einherjer med spyd og skjold.', W / 2, 238);
+    ctx.fillText('Tre porte skiller dig fra Valhal — og Fenrir vogter den sidste.', W / 2, 264);
+
+    // styring på en plade
+    tegnPlade(W / 2 - 292, 292, 584, 132, 0.94);
+    const linjer = [
+      ['isa',    'WASD eller piletaster', 'gå'],
+      ['tiwaz',  'Venstre museklik', 'stød med spydet — tre i træk giver et langt fremstød'],
+      ['gebo',   'Højre museklik', 'kast spydet; det rammer alt på vejen og vender tilbage'],
+      ['sowilo', 'Dobbelttryk på en pil', 'undvig den vej — også på Skift, hjulklik og mellemrum']
+    ];
+    linjer.forEach((l, i) => {
+      const y = 316 + i * 29;
+      tegnRune(ctx, l[0], W / 2 - 262, y, 9, 'rgba(223,169,74,0.9)', 2);
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 15.5px ' + F_TITEL;
+      ctx.fillStyle = P.guldLys;
+      ctx.fillText(l[1], W / 2 - 246, y);
+      const bredde = ctx.measureText(l[1]).width;
+      ctx.font = '15.5px ' + F_BROD;
+      ctx.fillStyle = 'rgba(233,224,205,0.82)';
+      ctx.fillText('  —  ' + l[2], W / 2 - 246 + bredde, y);
+      ctx.textAlign = 'center';
+    });
+
+    ctx.font = '16px ' + F_BROD;
+    ctx.fillStyle = 'rgba(243,232,212,0.65)';
+    ctx.fillText('Mellem rummene rækker en gud dig en velsignelse. De virker oven i hinanden.', W / 2, 442);
+    ctx.font = '14.5px ' + F_BROD;
+    ctx.fillStyle = 'rgba(243,232,212,0.45)';
+    ctx.fillText('Støder du lige efter et undvig, bliver stødet kraftigere.', W / 2, 466);
+
+    const puls = 0.75 + Math.sin(tid * 3) * 0.25;
+    ctx.font = 'bold 23px ' + F_TITEL;
+    ctx.shadowColor = P.guld; ctx.shadowBlur = 20 * puls;
+    ctx.fillStyle = P.guldLys;
+    ctx.globalAlpha = 0.75 + puls * 0.25;
+    tekstSpredt('KLIK ELLER TRYK ENTER FOR AT BEGYNDE', W / 2, 494, 3);
+    ctx.restore();
+    return;
+  }
+
+  if (tilstand === 'velsignelse') {
+    slorBaggrund(0.7);
+    const gud = tilbudtGud || GUDER[0];
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+    // banner: gudens navn i gudens farve, resten i benhvidt
+    ctx.font = 'bold 37px ' + F_TITEL;
+    const d1 = gud.navn, d2 = '  RÆKKER DIG EN GAVE';
+    const w1 = ctx.measureText(d1).width, w2 = ctx.measureText(d2).width;
+    const bb = w1 + w2 + 220;
+    tegnPlade(W / 2 - bb / 2, 60, bb, 54, 0.95);
+    tegnGudeSigil(ctx, gud.navn, W / 2 - bb / 2 + 44, 87, 18, gud.farve, true);
+    tegnGudeSigil(ctx, gud.navn, W / 2 + bb / 2 - 44, 87, 18, gud.farve, true);
+    ctx.textAlign = 'left';
+    ctx.shadowColor = gud.farve; ctx.shadowBlur = 18;
+    ctx.fillStyle = gud.farve;
+    ctx.fillText(d1, W / 2 - (w1 + w2) / 2, 87);
+    ctx.shadowColor = 'rgba(223,169,74,0.9)'; ctx.shadowBlur = 12;
+    ctx.fillStyle = P.ben;
+    ctx.fillText(d2, W / 2 - (w1 + w2) / 2 + w1, 87);
+    ctx.textAlign = 'center';
+    ctx.shadowBlur = 0;
+    ctx.font = 'italic 17px ' + F_BROD;
+    ctx.fillStyle = 'rgba(243,232,212,0.8)';
+    ctx.fillText('Vælg én velsignelse — klik på tavlen eller tryk 1, 2 eller 3', W / 2, 132);
+    ctx.restore();
+
+    tilbudt.forEach((kort, i) => tegnKort(kort, i));
+    return;
+  }
+
+  if (tilstand === 'sejr' || tilstand === 'doed') {
+    const sejr = tilstand === 'sejr';
+    slorBaggrund(0.72);
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+    // stråler bag sejrsteksten
+    if (sejr) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.translate(W / 2, 186);
+      for (let i = 0; i < 16; i++) {
+        ctx.rotate(Math.PI * 2 / 16);
+        const g = ctx.createLinearGradient(46, 0, 320, 0);
+        g.addColorStop(0, 'rgba(255,225,162,0.11)');
+        g.addColorStop(0.45, 'rgba(255,225,162,0.07)');
+        g.addColorStop(1, 'rgba(255,225,162,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.moveTo(46, -9); ctx.lineTo(320, -36); ctx.lineTo(320, 36); ctx.lineTo(46, 9);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    ctx.globalAlpha = 0.18;
+    if (sejr) tegnValknut(ctx, W / 2, 186, 84, P.guldLys, 3);
+    else tegnRune(ctx, 'hagalaz', W / 2, 186, 82, '#ff9a94', 4);
+    ctx.globalAlpha = 1;
+
+    ctx.font = 'bold 58px ' + F_TITEL;
+    ctx.shadowColor = sejr ? P.guld : FARVE.hjerte; ctx.shadowBlur = 30;
+    ctx.fillStyle = sejr ? P.guldLys : '#ffa9a2';
+    tekstSpredt(sejr ? 'PORTEN ER ÅBEN' : 'DU FALDT', W / 2, 186, 6);
+    ctx.shadowBlur = 0;
+
+    tegnDeler(W / 2, 226, 400, 'rgba(223,169,74,0.7)');
+
+    ctx.font = 'italic 20px ' + F_BROD;
+    ctx.fillStyle = 'rgba(243,232,212,0.9)';
+    ctx.fillText(sejr ? 'Fenrir er fældet. Valhal tager dig ind.'
+                      : 'Ulven fik dig. Valhal må vente lidt endnu.', W / 2, 254);
+
+    const m = Math.floor(rundeTid / 60), s = Math.floor(rundeTid % 60);
+    ctx.font = '17px ' + F_BROD;
+    ctx.fillStyle = 'rgba(233,224,205,0.7)';
+    ctx.fillText('Tid  ' + m + ' min ' + (s < 10 ? '0' + s : s) + ' sek' +
+                 (sejr ? '' : '   ·   nåede port ' + Math.min(rumIndex + 1, 4)), W / 2, 286);
+
+    if (valgteVelsignelser.length) {
+      ctx.font = '14px ' + F_TITEL;
+      ctx.fillStyle = 'rgba(223,169,74,0.75)';
+      tekstSpredt('DINE VELSIGNELSER', W / 2, 326, 3);
+      valgteVelsignelser.forEach((v, i) => {
+        const y = 356 + i * 28;
+        const gud = GUDER.find(g => g.navn === v.gud);
+        ctx.font = '18px ' + F_BROD;
+        const bredde = ctx.measureText(v.gud + ' — ' + v.navn).width;
+        if (gud) tegnGudeSigil(ctx, gud.navn, W / 2 - bredde / 2 - 22, y, 9, v.farve, true);
+        ctx.shadowColor = v.farve; ctx.shadowBlur = 10;
+        ctx.fillStyle = v.farve;
+        ctx.fillText(v.gud + ' — ' + v.navn, W / 2, y);
+        ctx.shadowBlur = 0;
+      });
+    }
+
+    const puls = 0.75 + Math.sin(tid * 3) * 0.25;
+    ctx.font = 'bold 22px ' + F_TITEL;
+    ctx.shadowColor = P.guld; ctx.shadowBlur = 18 * puls;
+    ctx.fillStyle = P.guldLys;
+    ctx.globalAlpha = 0.75 + puls * 0.25;
+    tekstSpredt('KLIK ELLER TRYK ENTER FOR AT PRØVE IGEN', W / 2, 492, 3);
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    ctx.font = '15px ' + F_BROD;
+    ctx.fillStyle = 'rgba(233,224,205,0.5)';
+    ctx.fillText('Nye velsignelser hver gang', W / 2, 522);
+    ctx.restore();
+  }
+}
+
+/* ---------------------------------------------------------
+   11. SPILSLØJFEN
+   --------------------------------------------------------- */
+nulstilMods();
+spiller.y = BANE.y + BANE.h - 60;
+
+let sidst = performance.now();
+function sloejfe(nu) {
+  let dt = (nu - sidst) / 1000;
+  sidst = nu;
+  if (dt > 1 / 20) dt = 1 / 20;
+  opdater(dt);
+  tegn();
+  requestAnimationFrame(sloejfe);
+}
+requestAnimationFrame(sloejfe);
+</script>
+</body>
+</html>

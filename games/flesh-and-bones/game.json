@@ -1,0 +1,13 @@
+{
+  "titel": "Flesh and Bones",
+  "beskrivelse": "Et skelet kæmper sig gennem fem nætter og fem bosser for at blive menneske igen.",
+  "type": "action",
+  "tags": [
+    "platform",
+    "bosser",
+    "grundkursus"
+  ],
+  "cover": "cover.png",
+  "styring": "Piletaster, mellemrum og X",
+  "dato": "2026-10-19"
+}

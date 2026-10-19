@@ -1,0 +1,13 @@
+{
+  "titel": "Blokkeland",
+  "beskrivelse": "Fæld træer, grav, byg og overlev natten i en pixelverden.",
+  "type": "action",
+  "tags": [
+    "byg",
+    "overlev",
+    "grundkursus"
+  ],
+  "cover": "cover.png",
+  "styring": "WASD, mellemrum, Q og E",
+  "dato": "2026-10-19"
+}

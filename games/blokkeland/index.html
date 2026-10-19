@@ -1,0 +1,2967 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Blokkeland</title>
+<style>
+  /* Layout concept: a fixed-chrome game shell — pixel-font header bar + HUD strip, with a
+     centered canvas viewport in between that renders the scrolling top-down world; trees and
+     the player are drawn as billboards anchored to their tile so they rise up out of the grid. */
+  :root{
+    --bg: #141910;
+    --panel: #23301c;
+    --panel-edge: #3d5429;
+    --panel-edge-lo: #0e1409;
+    --ink: #eef3df;
+    --ink-dim: #a9b795;
+    --leaf: #5a9c3f;
+    --leaf-dark: #3f7a2b;
+    --wood: #8a5a34;
+    --sun: #e8c84a;
+    --font-display: "Press Start 2P", "Courier New", monospace;
+    --font-body: "VT323", "Courier New", monospace;
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    touch-action:none;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+
+  .shell{
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    padding-left:max(16px, env(safe-area-inset-left,0px));
+    padding-right:max(16px, env(safe-area-inset-right,0px));
+    padding-top:max(10px, env(safe-area-inset-top,0px));
+    padding-bottom:max(10px, env(safe-area-inset-bottom,0px));
+    gap:8px;
+  }
+
+  header{
+    flex:0 0 auto;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    padding:10px 14px;
+    background:var(--panel);
+    border:4px solid var(--panel-edge);
+    box-shadow: 0 4px 0 var(--panel-edge-lo);
+    border-radius:4px;
+  }
+
+  .top-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    font-size:20px;
+  }
+  .top-right{display:flex;gap:8px;flex-wrap:wrap;}
+
+  .hud-row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:center;
+    line-height:1;
+  }
+  .resources-row{ font-size:18px; }
+  .tools-row{ font-size:15px; gap:6px; }
+  .tier-divider{
+    width:1px;
+    align-self:stretch;
+    background:var(--panel-edge);
+    margin:0 2px;
+  }
+
+  .hearts{
+    display:flex;
+    gap:3px;
+    flex-wrap:wrap;
+    line-height:1;
+  }
+  .hearts .heart{
+    width:16px;
+    height:16px;
+    flex:none;
+    image-rendering:pixelated;
+  }
+  .hearts .heart svg{display:block;width:100%;height:100%;}
+
+  h1{
+    margin:0;
+    font-family:var(--font-display);
+    font-size:clamp(13px, 3vw, 20px);
+    letter-spacing:1px;
+    color:var(--sun);
+    text-shadow: 2px 2px 0 #5a4310;
+  }
+
+  .stat{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:var(--panel-edge-lo);
+    border:2px solid var(--panel-edge);
+    padding:5px 10px;
+    border-radius:3px;
+    white-space:nowrap;
+  }
+  .tools-row .stat{ padding:3px 7px; gap:4px; }
+  .tools-row .stat.empty{ opacity:.45; }
+  .hud-icon{width:18px;height:18px;image-rendering:pixelated;flex:none;}
+  .swatch{
+    width:13px;height:13px;flex:none;
+    border:1px solid rgba(0,0,0,.4);
+  }
+  .wood-swatch{background:linear-gradient(135deg,#9c6a3f,#6e4824);}
+  .stone-swatch{background:linear-gradient(135deg,#b6b6b0,#7e7e78);}
+  .iron-swatch{background:linear-gradient(135deg,#eef0ec,#aab0ae);}
+  .dirt-swatch{background:linear-gradient(135deg,#93653f,#5b3b22);}
+
+  main{
+    position:relative;
+    flex:1 1 auto;
+    min-height:0;
+    min-width:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#0c0f08;
+    border:4px solid var(--panel-edge);
+    border-radius:4px;
+    overflow:hidden;
+  }
+
+  canvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+    image-rendering:pixelated;
+    background:#4a7a33;
+  }
+
+  .toast{
+    position:absolute;
+    top:10px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(10,14,7,.85);
+    border:2px solid var(--panel-edge);
+    color:var(--sun);
+    font-family:var(--font-display);
+    font-size:11px;
+    line-height:1.5;
+    padding:8px 12px;
+    border-radius:3px;
+    opacity:0;
+    transition:opacity .4s ease;
+    pointer-events:none;
+    text-align:center;
+    max-width:90%;
+    z-index:8;
+  }
+  .toast.show{opacity:1;}
+
+  .help{
+    position:absolute;
+    top:52px;
+    left:10px;
+    right:10px;
+    display:flex;
+    justify-content:center;
+    pointer-events:none;
+  }
+  .help p{
+    margin:0;
+    background:rgba(10,14,7,.8);
+    border:2px solid var(--panel-edge);
+    color:var(--ink-dim);
+    font-size:18px;
+    padding:6px 12px;
+    border-radius:3px;
+    text-align:center;
+    transition:opacity .6s ease;
+  }
+
+  /* ---------- BYG menu + crafting table ---------- */
+  .menu-overlay{
+    position:absolute;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:10px;
+    background:rgba(5,8,4,.55);
+    z-index:5;
+  }
+  .menu-overlay.show{display:flex;}
+  .menu-panel{
+    --slot:34px;
+    background:rgba(16,20,11,.97);
+    border:3px solid var(--sun);
+    border-radius:4px;
+    padding:10px 14px 12px;
+    max-width:100%;
+    max-height:100%;
+    overflow:auto;
+    box-shadow:0 5px 0 rgba(0,0,0,.5);
+  }
+  .menu-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    margin-bottom:10px;
+  }
+  .menu-head h2{
+    margin:0;
+    font-family:var(--font-display);
+    font-size:12px;
+    color:var(--sun);
+    letter-spacing:1px;
+  }
+  .menu-head .hint{font-size:16px;color:var(--ink-dim);margin-left:auto;}
+  .menu-close{
+    font-family:var(--font-display);
+    font-size:10px;
+    color:var(--ink);
+    background:var(--panel);
+    border:2px solid var(--panel-edge);
+    border-radius:3px;
+    padding:5px 8px;
+    cursor:pointer;
+  }
+  .menu-close:hover{border-color:var(--sun);}
+  .menu-body{
+    display:flex;
+    gap:20px;
+    flex-wrap:wrap;
+    justify-content:center;
+    align-items:flex-start;
+  }
+  .menu-section h3{
+    margin:0 0 6px;
+    font-family:var(--font-display);
+    font-size:9px;
+    color:var(--ink-dim);
+    letter-spacing:1px;
+  }
+  .slot-grid{
+    display:grid;
+    grid-template-columns:repeat(8, var(--slot));
+    grid-auto-rows:var(--slot);
+    gap:3px;
+  }
+  .slot{
+    position:relative;
+    background:#0b1007;
+    border:2px solid #243319;
+    border-radius:3px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .slot.filled{
+    cursor:pointer;
+    background:#1e2a17;
+    border-color:var(--panel-edge);
+  }
+  .slot.filled:hover{border-color:var(--sun);background:#2a3a20;}
+  .slot.filled:active{transform:translateY(1px);}
+  .slot.disabled{opacity:.42;filter:grayscale(.85);}
+  .slot img{
+    width:calc(var(--slot) - 8px);
+    height:calc(var(--slot) - 8px);
+    image-rendering:pixelated;
+    pointer-events:none;
+  }
+  .slot .count{
+    position:absolute;
+    right:2px;
+    bottom:0;
+    font-size:16px;
+    line-height:1;
+    color:#fff;
+    text-shadow:1px 1px 0 #000, -1px 0 0 #000;
+    pointer-events:none;
+  }
+  .slot-info{
+    margin:6px 0 0;
+    font-size:18px;
+    color:var(--ink);
+    min-height:1.2em;
+    max-width:calc(var(--slot) * 8 + 21px);
+  }
+  @media (max-width:720px){
+    .menu-panel{--slot:clamp(22px, calc((100vw - 110px) / 8), 34px); padding:8px 10px 10px;}
+    .menu-body{gap:12px;}
+  }
+
+  /* on-screen controls, always available (useful on touch, harmless with a keyboard) */
+  .pad{
+    position:absolute;
+    bottom:max(14px, env(safe-area-inset-bottom,0px));
+    right:max(14px, env(safe-area-inset-right,0px));
+    display:grid;
+    grid-template-columns:repeat(3, 46px);
+    grid-template-rows:repeat(2, 46px);
+    gap:4px;
+  }
+  .pad button{
+    font-family:var(--font-display);
+    font-size:14px;
+    color:var(--ink);
+    background:var(--panel);
+    border:2px solid var(--panel-edge);
+    border-radius:4px;
+    touch-action:none;
+    cursor:pointer;
+  }
+  .pad button:active, .pad button.active{
+    background:var(--leaf-dark);
+    color:#fff;
+  }
+  .pad .w{grid-column:2;grid-row:1;}
+  .pad .a{grid-column:1;grid-row:2;}
+  .pad .s{grid-column:2;grid-row:2;}
+  .pad .d{grid-column:3;grid-row:2;}
+
+  .action-pad{
+    position:absolute;
+    bottom:max(14px, env(safe-area-inset-bottom,0px));
+    left:max(14px, env(safe-area-inset-left,0px));
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .action-pad button{
+    font-family:var(--font-display);
+    font-size:11px;
+    color:var(--ink);
+    background:var(--panel);
+    border:2px solid var(--panel-edge);
+    border-radius:4px;
+    padding:12px 14px;
+    touch-action:none;
+    cursor:pointer;
+  }
+  .action-pad button:active, .action-pad button.active{
+    background:var(--leaf-dark);
+    color:#fff;
+  }
+  @media (pointer: fine){
+    .pad, .action-pad{opacity:.55;}
+    .pad:hover, .action-pad:hover{opacity:1;}
+  }
+
+  .death-overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(8,6,5,.72);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .5s ease;
+    z-index:10;
+  }
+  .death-overlay.show{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .death-overlay .panel{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:14px;
+    padding:22px 26px;
+    background:var(--panel);
+    border:4px solid #7a2a24;
+    box-shadow:0 5px 0 #3a0f0c;
+    border-radius:4px;
+    text-align:center;
+  }
+  .death-overlay h2{
+    margin:0;
+    font-family:var(--font-display);
+    font-size:clamp(14px, 4vw, 18px);
+    color:#e2615a;
+    text-shadow:2px 2px 0 #3a0f0c;
+  }
+  .death-overlay button{
+    font-family:var(--font-display);
+    font-size:12px;
+    color:var(--ink);
+    background:var(--leaf-dark);
+    border:3px solid #2e5c1f;
+    box-shadow:0 3px 0 #1c3a12;
+    padding:10px 18px;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  .death-overlay button:active{
+    transform:translateY(2px);
+    box-shadow:0 1px 0 #1c3a12;
+  }
+
+  .damage-flash{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(180,20,20,0) 45%, rgba(180,20,20,.55) 100%);
+    opacity:0;
+    transition:opacity .08s ease-out;
+    z-index:4;
+  }
+  .damage-flash.show{
+    opacity:1;
+    transition:opacity .03s ease-out;
+  }
+</style>
+<style>@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(data:font/woff2;base64,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) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'VT323';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(data:font/woff2;base64,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) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}</style>
+</head>
+<body>
+
+<div class="shell">
+  <header>
+    <div class="hearts" id="hearts" aria-label="Liv"></div>
+    <div class="top-row">
+      <h1>⛏ BLOKKELAND</h1>
+      <div class="top-right">
+        <div class="stat" id="dayStat">☀ Dag</div>
+        <div class="stat">📍 <span id="coords">0, 0</span></div>
+      </div>
+    </div>
+    <div class="hud-row resources-row">
+      <div class="stat"><span class="swatch wood-swatch"></span><span id="woodCount">0</span> træ</div>
+      <div class="stat"><span class="swatch stone-swatch"></span><span id="stoneCount">0</span> sten</div>
+      <div class="stat"><span class="swatch iron-swatch"></span><span id="ironCount">0</span> jern</div>
+      <div class="stat"><span class="swatch dirt-swatch"></span><span id="dirtCount">0</span> jord</div>
+    </div>
+    <div class="hud-row tools-row" id="toolsRow"></div>
+  </header>
+
+  <main id="viewport">
+    <canvas id="game" width="800" height="600"></canvas>
+    <div class="damage-flash" id="damageFlash"></div>
+    <div class="toast" id="toast"></div>
+    <div class="help" id="help"><p>WASD / piletaster går · Mellemrum slår, fælder, graver og hakker · Q bygger og crafter · E bruger et arbejdsbord</p></div>
+
+    <div class="menu-overlay" id="buildMenu">
+      <div class="menu-panel" role="dialog" aria-label="Byg">
+        <div class="menu-head">
+          <h2>BYG</h2>
+          <span class="hint">Q / Esc lukker</span>
+          <button class="menu-close" data-close>✕</button>
+        </div>
+        <div class="menu-body">
+          <section class="menu-section">
+            <h3>PLACÉR</h3>
+            <div class="slot-grid" id="placeGrid"></div>
+            <p class="slot-info" id="placeInfo">Klik på en ting for at placere den foran dig.</p>
+          </section>
+          <section class="menu-section">
+            <h3>CRAFT</h3>
+            <div class="slot-grid" id="buildCraftGrid"></div>
+            <p class="slot-info" id="buildCraftInfo">Klik på en ting for at crafte den.</p>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="menu-overlay" id="tableMenu">
+      <div class="menu-panel" role="dialog" aria-label="Arbejdsbord">
+        <div class="menu-head">
+          <h2>ARBEJDSBORD</h2>
+          <span class="hint">E / Esc lukker</span>
+          <button class="menu-close" data-close>✕</button>
+        </div>
+        <section class="menu-section">
+          <div class="slot-grid" id="tableCraftGrid"></div>
+          <p class="slot-info" id="tableCraftInfo">Klik på en ting for at crafte den.</p>
+        </section>
+      </div>
+    </div>
+
+    <div class="death-overlay" id="deathOverlay">
+      <div class="panel">
+        <h2>Du er død! Spil igen?</h2>
+        <button id="restartBtn">Spil igen</button>
+      </div>
+    </div>
+    <div class="pad" aria-hidden="true">
+      <button class="w" data-key="w">▲</button>
+      <button class="a" data-key="a">◀</button>
+      <button class="s" data-key="s">▼</button>
+      <button class="d" data-key="d">▶</button>
+    </div>
+    <div class="action-pad" aria-hidden="true">
+      <button data-key=" ">SLÅ</button>
+      <button data-key="q">BYG</button>
+      <button data-key="e">BORD</button>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const canvas = document.getElementById('game');
+  let ctx = canvas.getContext('2d');
+  const viewport = document.getElementById('viewport');
+  const resourceEls = {
+    wood: document.getElementById('woodCount'),
+    stone: document.getElementById('stoneCount'),
+    iron: document.getElementById('ironCount'),
+    dirt: document.getElementById('dirtCount')
+  };
+  const toolsRowEl = document.getElementById('toolsRow');
+  const coordsEl = document.getElementById('coords');
+  const dayStatEl = document.getElementById('dayStat');
+  const toastEl = document.getElementById('toast');
+  const helpEl = document.getElementById('help');
+  const buildMenuEl = document.getElementById('buildMenu');
+  const tableMenuEl = document.getElementById('tableMenu');
+  const placeGridEl = document.getElementById('placeGrid');
+  const placeInfoEl = document.getElementById('placeInfo');
+  const buildCraftGridEl = document.getElementById('buildCraftGrid');
+  const buildCraftInfoEl = document.getElementById('buildCraftInfo');
+  const tableCraftGridEl = document.getElementById('tableCraftGrid');
+  const tableCraftInfoEl = document.getElementById('tableCraftInfo');
+  const heartsEl = document.getElementById('hearts');
+  const damageFlashEl = document.getElementById('damageFlash');
+  const deathOverlayEl = document.getElementById('deathOverlay');
+  const restartBtn = document.getElementById('restartBtn');
+  restartBtn.addEventListener('click', () => location.reload());
+
+  let animT = 0;
+  let lastTime = performance.now();
+
+  // ---------- hearts / health ----------
+  const HEART_PIXELS = [
+    '01100110',
+    '11111111',
+    '11111111',
+    '01111110',
+    '00111100',
+    '00011000'
+  ];
+  function heartSVG(color){
+    let rects = '';
+    HEART_PIXELS.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++){
+        if (row[x] === '1') rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + color + '"/>';
+      }
+    });
+    return '<svg viewBox="0 0 8 6" xmlns="http://www.w3.org/2000/svg">' + rects + '</svg>';
+  }
+  const HEART_FULL_SVG = heartSVG('#e5473a');
+  const HEART_EMPTY_SVG = heartSVG('#4a4a46');
+
+  const player_health = { current: 10, max: 10 };
+  const heartEls = [];
+  for (let i = 0; i < player_health.max; i++){
+    const span = document.createElement('span');
+    span.className = 'heart';
+    span.innerHTML = HEART_FULL_SVG;
+    heartsEl.appendChild(span);
+    heartEls.push(span);
+  }
+  function updateHeartsHUD(){
+    for (let i = 0; i < heartEls.length; i++){
+      heartEls[i].innerHTML = i < player_health.current ? HEART_FULL_SVG : HEART_EMPTY_SVG;
+    }
+  }
+  updateHeartsHUD();
+
+  let damageFlashTimer = null;
+  function flashDamage(){
+    damageFlashEl.classList.add('show');
+    clearTimeout(damageFlashTimer);
+    damageFlashTimer = setTimeout(() => damageFlashEl.classList.remove('show'), 160);
+  }
+
+  function playerTakeDamage(amount, message){
+    if (player_health.current <= 0) return;
+    player_health.current = Math.max(0, player_health.current - amount);
+    updateHeartsHUD();
+    flashDamage();
+    showToast(message || ('Du blev ramt! -' + amount + ' ❤'));
+    if (player_health.current <= 0) triggerDeath();
+  }
+
+  // ---------- death ----------
+  const DEATH_DURATION = 1.0;
+  let gameOver = false;
+  let deathTime = -999;
+  let tombstone = null;
+
+  function triggerDeath(){
+    if (gameOver) return;
+    gameOver = true;
+    deathTime = animT;
+    tombstone = { px: player.px, py: player.py };
+    closeMenus();
+    setTimeout(() => deathOverlayEl.classList.add('show'), DEATH_DURATION * 1000 + 300);
+  }
+
+  function drawPlayerDeath(now, heldItem){
+    const t = Math.min(1, (now - deathTime) / DEATH_DURATION);
+    const alpha = 1 - t;
+    const scaleY = 1 - t * 0.85;
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(player.px, player.py);
+    ctx.scale(1, scaleY);
+    ctx.translate(-player.px, -player.py);
+    drawPlayer(now, heldItem);
+    ctx.restore();
+  }
+
+  function drawTombstone(stone, now){
+    const alpha = Math.min(1, (now - deathTime) / DEATH_DURATION);
+    const px = stone.px;
+    const baseY = (Math.floor(stone.py / TILE) + 1) * TILE - 2;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(px, baseY + 1, 10, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#9a9a92';
+    ctx.beginPath();
+    ctx.moveTo(px - 9, baseY);
+    ctx.lineTo(px - 9, baseY - 13);
+    ctx.quadraticCurveTo(px - 9, baseY - 21, px, baseY - 21);
+    ctx.quadraticCurveTo(px + 9, baseY - 21, px + 9, baseY - 13);
+    ctx.lineTo(px + 9, baseY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#7a7a72';
+    ctx.fillRect(px - 9, baseY - 4, 18, 4);
+    ctx.fillStyle = '#34342e';
+    ctx.font = '7px "VT323", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('RIP', px, baseY - 10);
+    ctx.restore();
+  }
+
+  const TILE = 32;
+  const WORLD_W = 44;
+  const WORLD_H = 34;
+
+  const BEDROCK = '#333333';
+  const BEDROCK_DARK = '#242424';
+  const IRON_SPOT = '#c99a4a';
+
+  const TILE_GRASS1 = 0, TILE_GRASS2 = 1, TILE_GRASS3 = 2, TILE_WATER = 3, TILE_STONE = 4, TILE_SAND = 5, TILE_BEDROCK = 6;
+  // placed blocks — solid for everyone
+  const TILE_DIRT = 7, TILE_PLANK = 8, TILE_STONEBLOCK = 9;
+
+  const isGrass = (t) => t === TILE_GRASS1 || t === TILE_GRASS2 || t === TILE_GRASS3;
+  const isSolidBlock = (t) => t === TILE_STONE || t === TILE_DIRT || t === TILE_PLANK || t === TILE_STONEBLOCK;
+
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rng = mulberry32(Date.now() & 0xffffffff);
+  function randRange(a, b){ return a + Math.random() * (b - a); }
+
+  // ---------- world generation ----------
+  const terrain = new Uint8Array(WORLD_W * WORLD_H);
+  const idx = (x, y) => y * WORLD_W + x;
+  const inBounds = (x, y) => x >= 0 && y >= 0 && x < WORLD_W && y < WORLD_H;
+
+  for (let i = 0; i < terrain.length; i++){
+    const r = rng();
+    terrain[i] = r < 0.55 ? TILE_GRASS1 : (r < 0.8 ? TILE_GRASS2 : TILE_GRASS3);
+  }
+
+  function carveBlob(cx, cy, radius, tile, ringTile){
+    const reach = Math.ceil(radius) + 1;
+    for (let y = -reach; y <= reach; y++){
+      for (let x = -reach; x <= reach; x++){
+        const tx = cx + x, ty = cy + y;
+        if (!inBounds(tx, ty)) continue;
+        const d = Math.sqrt(x * x + y * y) + (rng() - 0.5) * 1.4;
+        if (d <= radius) terrain[idx(tx, ty)] = tile;
+        else if (ringTile !== undefined && d <= radius + 1.3) terrain[idx(tx, ty)] = ringTile;
+      }
+    }
+  }
+
+  const lakeCount = 1 + Math.floor(rng() * 2);
+  for (let i = 0; i < lakeCount; i++){
+    const cx = 6 + Math.floor(rng() * (WORLD_W - 12));
+    const cy = 6 + Math.floor(rng() * (WORLD_H - 12));
+    carveBlob(cx, cy, 2.5 + rng() * 2.5, TILE_WATER, TILE_SAND);
+  }
+  // only a couple of small rocky patches at the start — most stone has to be dug for
+  const stoneFieldCount = 2;
+  for (let i = 0; i < stoneFieldCount; i++){
+    const cx = 4 + Math.floor(rng() * (WORLD_W - 8));
+    const cy = 4 + Math.floor(rng() * (WORLD_H - 8));
+    carveBlob(cx, cy, 0.8 + rng() * 0.6, TILE_STONE);
+  }
+
+  const spawnX = Math.floor(WORLD_W / 2);
+  const spawnY = Math.floor(WORLD_H / 2);
+  for (let y = spawnY - 2; y <= spawnY + 2; y++){
+    for (let x = spawnX - 2; x <= spawnX + 2; x++){
+      if (inBounds(x, y)) terrain[idx(x, y)] = TILE_GRASS1;
+    }
+  }
+
+  // some stone fields secretly hold iron ore, shown as yellow-brown spots
+  const ironStoneSet = new Set();
+  for (let i = 0; i < terrain.length; i++){
+    if (terrain[i] === TILE_STONE && rng() < 0.3) ironStoneSet.add(i);
+  }
+
+  // what a placed block was standing on, so removing it gives the ground back
+  const underTile = new Map();
+
+  // water can be waded through (slowly); nothing grows, spawns or stands in it though
+  function walkable(tx, ty){
+    if (!inBounds(tx, ty)) return false;
+    const t = terrain[idx(tx, ty)];
+    return t !== TILE_BEDROCK && !isSolidBlock(t);
+  }
+  function isDry(tx, ty){
+    return walkable(tx, ty) && terrain[idx(tx, ty)] !== TILE_WATER;
+  }
+  const WATER_SPEED = 0.5;
+
+  // placed objects (crafting tables, doors, torches)
+  const placedObjects = [];
+  const placedAt = new Map();
+
+  // trees
+  const trees = [];
+  const treeAt = new Map();
+  for (let y = 0; y < WORLD_H; y++){
+    for (let x = 0; x < WORLD_W; x++){
+      if (!isDry(x, y)) continue;
+      if (Math.abs(x - spawnX) <= 2 && Math.abs(y - spawnY) <= 2) continue;
+      if (rng() < 0.065){
+        let tooClose = false;
+        for (let dy = -1; dy <= 1 && !tooClose; dy++){
+          for (let dx = -1; dx <= 1 && !tooClose; dx++){
+            if (treeAt.has(idx(x + dx, y + dy))) tooClose = true;
+          }
+        }
+        if (!tooClose){
+          const tree = { x, y, chopped: false, hits: 0, variant: rng() < 0.5 ? 0 : 1 };
+          trees.push(tree);
+          treeAt.set(idx(x, y), tree);
+        }
+      }
+    }
+  }
+
+  // flowers (decorative only)
+  const flowers = [];
+  for (let y = 0; y < WORLD_H; y++){
+    for (let x = 0; x < WORLD_W; x++){
+      if (!isDry(x, y)) continue;
+      if (terrain[idx(x, y)] === TILE_SAND) continue;
+      if (treeAt.has(idx(x, y))) continue;
+      if (rng() < 0.035){
+        flowers.push({ x, y, hue: rng() < 0.5 ? '#e8e8e8' : '#e8c84a', c: rng() < 0.5 ? 'daisy' : 'tulip' });
+      }
+    }
+  }
+
+  // loose stones — a pickable resource scattered here and there
+  const groundStones = [];
+  for (let y = 0; y < WORLD_H; y++){
+    for (let x = 0; x < WORLD_W; x++){
+      if (!isDry(x, y)) continue;
+      if (terrain[idx(x, y)] === TILE_SAND) continue;
+      if (treeAt.has(idx(x, y))) continue;
+      if (rng() < 0.02){
+        groundStones.push({ x, y, rot: rng() * 0.6 - 0.3 });
+      }
+    }
+  }
+
+  // ---------- player ----------
+  const player = {
+    px: (spawnX + 0.5) * TILE,
+    py: (spawnY + 0.5) * TILE,
+    dir: 'down',
+    moving: false,
+    speed: 150,
+    radius: 10,
+    swingStart: -999,
+    swordSwingStart: -999,
+    shovelSwingStart: -999,
+    pickSwingStart: -999
+  };
+  const resources = { wood: 0, stone: 0, iron: 0, dirt: 0 };
+  const items = { craftingTable: 0, door: 0, torch: 0 };
+  const tools = {
+    stoneAxe: 0, stoneShovel: 0, stonePickaxe: 0,
+    ironAxe: 0, ironShovel: 0, ironPickaxe: 0, ironSword: 0
+  };
+  const TOOL_LIST = [
+    { key: 'stoneAxe', name: 'Stenøkse' },
+    { key: 'stoneShovel', name: 'Stenskovl' },
+    { key: 'stonePickaxe', name: 'Stenhakke' },
+    null,
+    { key: 'ironAxe', name: 'Jernøkse' },
+    { key: 'ironShovel', name: 'Jernskovl' },
+    { key: 'ironPickaxe', name: 'Jernhakke' },
+    { key: 'ironSword', name: 'Jernsværd' }
+  ];
+  const AXE_TIERS = ['ironAxe', 'stoneAxe'];
+  const SHOVEL_TIERS = ['ironShovel', 'stoneShovel'];
+  const PICKAXE_TIERS = ['ironPickaxe', 'stonePickaxe'];
+  function bestOf(list){ for (const t of list) if (tools[t] > 0) return t; return null; }
+  const bestAxeTier = () => bestOf(AXE_TIERS);
+  const bestShovelTier = () => bestOf(SHOVEL_TIERS);
+  const bestPickaxeTier = () => bestOf(PICKAXE_TIERS);
+
+  // the sword hits hardest, axes work in a pinch
+  const WEAPONS = [
+    { key: 'ironSword', dmg: 3, type: 'sword' },
+    { key: 'ironAxe', dmg: 2, type: 'axe' },
+    { key: 'stoneAxe', dmg: 1, type: 'axe' }
+  ];
+  function bestWeapon(){ for (const w of WEAPONS) if (tools[w.key] > 0) return w; return null; }
+
+  function dirFrom(dx, dy){
+    return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+  }
+
+  // ---------- day / night ----------
+  const CYCLE = 240, DAY_END = 150, DUSK_END = 165, NIGHT_END = 225;
+  const MAX_DARK = 0.84;
+  let worldTime = 5;
+  function dayPhase(){
+    const t = worldTime % CYCLE;
+    if (t < DAY_END) return { phase: 'day', dark: 0 };
+    if (t < DUSK_END) return { phase: 'dusk', dark: MAX_DARK * (t - DAY_END) / (DUSK_END - DAY_END) };
+    if (t < NIGHT_END) return { phase: 'night', dark: MAX_DARK };
+    return { phase: 'dawn', dark: MAX_DARK * (1 - (t - NIGHT_END) / (CYCLE - NIGHT_END)) };
+  }
+  const PHASE_LABELS = { day: '☀ Dag', dusk: '🌇 Skumring', night: '🌙 Nat', dawn: '🌅 Daggry' };
+  let lastPhase = 'day';
+
+  // ---------- creatures: shared ----------
+  const MIN_SPAWN_DIST = 9;
+  const MONSTER_CAP = 10;
+  const PIG_CAP = 6;
+  const MELEE_RANGE = 1.8;
+  const ARROW_SPEED = 240;
+
+  const MONSTER_TYPES = {
+    zombie:   { name: 'Zombie',   hp: 6, speed: 90,  chase: 5, attackRange: 1.15, cooldown: 1.5, damage: 1, radius: 10, burns: true,  bones: true },
+    spider:   { name: 'Edderkop', hp: 3, speed: 135, chase: 7, attackRange: 1.0,  cooldown: 1.0, damage: 1, radius: 9,  burns: false, bones: false },
+    skeleton: { name: 'Skelet',   hp: 5, speed: 80,  chase: 8, attackRange: 7,    cooldown: 2.0, damage: 1, radius: 10, burns: true,  bones: true },
+    creeper:  { name: 'Creeper',  hp: 4, speed: 75,  chase: 8, fuse: 1.5,                                    radius: 10, burns: false, bones: false }
+  };
+
+  const monsters = [];
+  const pigs = [];
+  const bonePiles = [];
+  const hamPiles = [];
+  const arrows = [];
+  const particles = [];
+  const explosions = [];
+  let nextNightSpawnAt = 0;
+  let nextDayZombieAt = randRange(60, 90);
+  let nextPigSpawnAt = randRange(10, 16);
+
+  function torchNear(tx, ty, dist){
+    for (const o of placedObjects){
+      if (o.type === 'torch' && Math.hypot(o.x - tx, o.y - ty) < dist) return true;
+    }
+    return false;
+  }
+
+  function findGroundSpawnTile(minDist){
+    const playerTx = player.px / TILE, playerTy = player.py / TILE;
+    for (let attempt = 0; attempt < 80; attempt++){
+      const tx = Math.floor(Math.random() * WORLD_W);
+      const ty = Math.floor(Math.random() * WORLD_H);
+      if (!isDry(tx, ty)) continue;
+      if (treeAt.has(idx(tx, ty)) || placedAt.has(idx(tx, ty))) continue;
+      if (Math.hypot(tx - playerTx, ty - playerTy) < minDist) continue;
+      if (torchNear(tx, ty, 4)) continue;
+      return { tx, ty };
+    }
+    return null;
+  }
+
+  function makeMonster(type, tx, ty){
+    const T = MONSTER_TYPES[type];
+    return {
+      type,
+      px: (tx + 0.5) * TILE,
+      py: (ty + 0.5) * TILE,
+      radius: T.radius,
+      dir: 'down',
+      moving: false,
+      hp: T.hp,
+      hitFlash: -999,
+      wanderDx: 0,
+      wanderDy: 0,
+      wanderUntil: 0,
+      nextWanderAt: animT + randRange(2, 6),
+      attackCooldownUntil: animT + 1,
+      attackSwingStart: -999,
+      fuseStart: -1,
+      burnAt: -1,
+      bobSeed: Math.random() * Math.PI * 2
+    };
+  }
+
+  function spawnMonster(type){
+    if (monsters.length >= MONSTER_CAP) return;
+    const spot = findGroundSpawnTile(MIN_SPAWN_DIST);
+    if (!spot) return;
+    monsters.push(makeMonster(type, spot.tx, spot.ty));
+    if (type === 'spider'){
+      // spiders come in small packs
+      const extra = 1 + Math.floor(Math.random() * 2);
+      let placed = 0;
+      for (let tries = 0; tries < 12 && placed < extra && monsters.length < MONSTER_CAP; tries++){
+        const tx = spot.tx + Math.floor(Math.random() * 3) - 1;
+        const ty = spot.ty + Math.floor(Math.random() * 3) - 1;
+        if (!isDry(tx, ty) || treeAt.has(idx(tx, ty)) || placedAt.has(idx(tx, ty))) continue;
+        monsters.push(makeMonster('spider', tx, ty));
+        placed++;
+      }
+    }
+  }
+
+  function pickNightMonster(){
+    const r = Math.random();
+    if (r < 0.35) return 'zombie';
+    if (r < 0.6) return 'spider';
+    if (r < 0.8) return 'skeleton';
+    return 'creeper';
+  }
+
+  function wander(e, speed, dt){
+    if (animT < e.wanderUntil){
+      e.moving = true;
+      moveEntityWithCollision(e, e.wanderDx, e.wanderDy, speed, dt);
+    } else if (animT >= e.nextWanderAt){
+      const tiles = 1 + Math.floor(Math.random() * 2);
+      const angle = Math.random() * Math.PI * 2;
+      e.wanderDx = Math.cos(angle);
+      e.wanderDy = Math.sin(angle);
+      e.wanderUntil = animT + (tiles * TILE) / speed;
+      e.nextWanderAt = e.wanderUntil + randRange(4, 9);
+      e.dir = dirFrom(e.wanderDx, e.wanderDy);
+    }
+  }
+
+  // a closed door (or any wall) between a monster and the player blocks its swing
+  function blockedBetween(m){
+    const mx = (m.px + player.px) / 2, my = (m.py + player.py) / 2;
+    return solidTileAt(mx, my, m);
+  }
+
+  function updateMeleeMonster(m, T, dx, dy, dist, dt){
+    if (dist <= T.attackRange && !blockedBetween(m)){
+      m.dir = dirFrom(dx, dy);
+      if (animT >= m.attackCooldownUntil){
+        m.attackCooldownUntil = animT + T.cooldown;
+        m.attackSwingStart = animT;
+        playerTakeDamage(T.damage, T.name + ' angreb! -' + T.damage + ' ❤');
+      }
+    } else if (dist <= T.chase){
+      m.moving = true;
+      m.dir = dirFrom(dx, dy);
+      moveEntityWithCollision(m, dx, dy, T.speed, dt);
+    } else {
+      wander(m, T.speed, dt);
+    }
+  }
+
+  function updateSkeleton(m, T, dx, dy, dist, dt){
+    if (dist <= T.chase){
+      m.dir = dirFrom(dx, dy);
+      if (dist < 3){ m.moving = true; moveEntityWithCollision(m, -dx, -dy, T.speed, dt); }
+      else if (dist > 5){ m.moving = true; moveEntityWithCollision(m, dx, dy, T.speed, dt); }
+      if (dist <= T.attackRange && animT >= m.attackCooldownUntil){
+        m.attackCooldownUntil = animT + T.cooldown;
+        m.attackSwingStart = animT;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len, uy = dy / len;
+        arrows.push({ px: m.px + ux * 12, py: m.py - 4 + uy * 12, vx: ux * ARROW_SPEED, vy: uy * ARROW_SPEED, life: 2.2 });
+      }
+    } else {
+      wander(m, T.speed, dt);
+    }
+  }
+
+  function updateCreeper(m, T, dx, dy, dist, dt){
+    if (m.fuseStart >= 0){
+      if (dist > 2.5){
+        m.fuseStart = -1;
+      } else if (animT - m.fuseStart >= T.fuse){
+        explode(m);
+        return;
+      } else if (dist > 0.9){
+        m.moving = true;
+        moveEntityWithCollision(m, dx, dy, T.speed * 0.4, dt);
+      }
+    } else if (dist <= 1.5){
+      m.fuseStart = animT;
+      m.dir = dirFrom(dx, dy);
+    } else if (dist <= T.chase){
+      m.moving = true;
+      m.dir = dirFrom(dx, dy);
+      moveEntityWithCollision(m, dx, dy, T.speed, dt);
+    } else {
+      wander(m, T.speed, dt);
+    }
+  }
+
+  function updateMonsters(dt, phase){
+    if (phase.dark > 0.5){
+      if (animT >= nextNightSpawnAt){
+        spawnMonster(pickNightMonster());
+        nextNightSpawnAt = animT + randRange(5, 9);
+      }
+    } else if (phase.phase === 'day' && animT >= nextDayZombieAt){
+      spawnMonster('zombie');
+      nextDayZombieAt = animT + randRange(60, 90);
+    }
+
+    for (const m of monsters.slice()){
+      if (m.burnAt > 0 && animT >= m.burnAt){
+        removeFrom(monsters, m);
+        smokePuff(m.px, m.py - 6, 14);
+        continue;
+      }
+      const T = MONSTER_TYPES[m.type];
+      const dx = player.px - m.px, dy = player.py - m.py;
+      const dist = Math.hypot(dx, dy) / TILE;
+      m.moving = false;
+      if (m.type === 'skeleton') updateSkeleton(m, T, dx, dy, dist, dt);
+      else if (m.type === 'creeper') updateCreeper(m, T, dx, dy, dist, dt);
+      else updateMeleeMonster(m, T, dx, dy, dist, dt);
+    }
+  }
+
+  function arrowBlocked(px, py){
+    const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+    if (!inBounds(tx, ty)) return true;
+    const i = idx(tx, ty);
+    if (isSolidBlock(terrain[i])) return true;
+    const tr = treeAt.get(i);
+    if (tr && !tr.chopped) return true;
+    const o = placedAt.get(i);
+    if (o && o.type !== 'torch') return true;
+    return false;
+  }
+
+  function updateArrows(dt){
+    for (const a of arrows.slice()){
+      a.px += a.vx * dt;
+      a.py += a.vy * dt;
+      a.life -= dt;
+      if (a.life <= 0 || arrowBlocked(a.px, a.py + 6)){
+        removeFrom(arrows, a);
+        continue;
+      }
+      if (Math.hypot(a.px - player.px, a.py - (player.py - 4)) < 12){
+        removeFrom(arrows, a);
+        playerTakeDamage(1, 'Ramt af en pil! -1 ❤');
+      }
+    }
+  }
+
+  function removeFrom(list, item){
+    const i = list.indexOf(item);
+    if (i !== -1) list.splice(i, 1);
+  }
+
+  function smokePuff(x, y, n){
+    for (let k = 0; k < n; k++){
+      const a = Math.random() * Math.PI * 2, s = randRange(10, 40);
+      particles.push({ px: x + randRange(-6, 6), py: y + randRange(-8, 4), vx: Math.cos(a) * s, vy: Math.sin(a) * s - 25, life: randRange(0.5, 1.1), max: 1.1, size: randRange(3, 6), color: '#8a8a84' });
+    }
+  }
+
+  function tileOverlapsEntity(tx, ty, e){
+    const r = e.radius;
+    return e.px + r >= tx * TILE && e.px - r < (tx + 1) * TILE &&
+           e.py + r >= ty * TILE && e.py - r * 0.4 < (ty + 1) * TILE;
+  }
+  function tileOccupied(tx, ty){
+    if (tileOverlapsEntity(tx, ty, player)) return true;
+    for (const m of monsters) if (tileOverlapsEntity(tx, ty, m)) return true;
+    for (const p of pigs) if (tileOverlapsEntity(tx, ty, p)) return true;
+    return false;
+  }
+
+  function clearDecorAt(tx, ty){
+    for (let k = flowers.length - 1; k >= 0; k--) if (flowers[k].x === tx && flowers[k].y === ty) flowers.splice(k, 1);
+    for (let k = groundStones.length - 1; k >= 0; k--) if (groundStones[k].x === tx && groundStones[k].y === ty) groundStones.splice(k, 1);
+  }
+
+  function explode(m){
+    removeFrom(monsters, m);
+    const cx = Math.floor(m.px / TILE), cy = Math.floor(m.py / TILE);
+    for (let dy = -2; dy <= 2; dy++){
+      for (let dx = -2; dx <= 2; dx++){
+        if (dx * dx + dy * dy > 4.5) continue;
+        const tx = cx + dx, ty = cy + dy;
+        if (!inBounds(tx, ty)) continue;
+        const i = idx(tx, ty);
+        const tr = treeAt.get(i);
+        if (tr && !tr.chopped) tr.chopped = true;
+        const o = placedAt.get(i);
+        if (o) removeObject(o);
+        const t = terrain[i];
+        if (t === TILE_DIRT || t === TILE_PLANK || t === TILE_STONEBLOCK){
+          terrain[i] = TILE_BEDROCK;
+          underTile.delete(i);
+        } else if (isGrass(t) && !tileOccupied(tx, ty)){
+          // a scorched crater — never under someone's feet, so nobody gets stuck
+          terrain[i] = TILE_STONE;
+          clearDecorAt(tx, ty);
+        }
+      }
+    }
+    const pd = Math.hypot(player.px - m.px, player.py - m.py) / TILE;
+    if (pd <= 2) playerTakeDamage(4, 'Creeperen eksploderede! -4 ❤');
+    else if (pd <= 3) playerTakeDamage(2, 'Creeperen eksploderede! -2 ❤');
+    else showToast('BOOM!');
+    for (const other of monsters.slice()){
+      if (Math.hypot(other.px - m.px, other.py - m.py) / TILE <= 2){
+        other.hp -= 4; other.hitFlash = animT;
+        if (other.hp <= 0) killCreature(other, false);
+      }
+    }
+    for (const p of pigs.slice()){
+      if (Math.hypot(p.px - m.px, p.py - m.py) / TILE <= 2){
+        p.hp -= 4; p.hitFlash = animT;
+        if (p.hp <= 0) killCreature(p, false);
+      }
+    }
+    explosions.push({ px: m.px, py: m.py - 4, t0: animT });
+    const colors = ['#f5d36a', '#f08a2c', '#d0441c', '#8a8a84', '#5a5a54'];
+    for (let k = 0; k < 26; k++){
+      const a = Math.random() * Math.PI * 2, s = randRange(40, 150);
+      particles.push({ px: m.px, py: m.py - 4, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: randRange(0.4, 0.9), max: 0.9, size: randRange(3, 6), color: colors[k % colors.length] });
+    }
+  }
+
+  function updateParticles(dt){
+    for (const p of particles.slice()){
+      p.px += p.vx * dt;
+      p.py += p.vy * dt;
+      p.vx *= 0.92; p.vy *= 0.92;
+      p.life -= dt;
+      if (p.life <= 0) removeFrom(particles, p);
+    }
+    for (const e of explosions.slice()){
+      if (animT - e.t0 > 0.45) removeFrom(explosions, e);
+    }
+  }
+
+  function nearestCreature(rangeTiles){
+    let best = null, bestDist = Infinity;
+    for (const list of [monsters, pigs]){
+      for (const e of list){
+        const d = Math.hypot(player.px - e.px, player.py - e.py) / TILE;
+        if (d <= rangeTiles && d < bestDist){ best = e; bestDist = d; }
+      }
+    }
+    return best;
+  }
+
+  function creatureName(e){ return e.type ? MONSTER_TYPES[e.type].name : 'Grisen'; }
+
+  function killCreature(target, announce){
+    if (target.type){
+      removeFrom(monsters, target);
+      if (MONSTER_TYPES[target.type].bones) bonePiles.push({ px: target.px, py: target.py });
+      else smokePuff(target.px, target.py - 4, 8);
+      if (announce) showToast(MONSTER_TYPES[target.type].name + ' besejret!');
+    } else {
+      removeFrom(pigs, target);
+      hamPiles.push({ px: target.px, py: target.py });
+      if (announce) showToast('Grisen faldt... en skinke ligger tilbage');
+    }
+  }
+
+  function tryMeleeAttack(){
+    const w = bestWeapon();
+    if (!w) return false;
+    const target = nearestCreature(MELEE_RANGE);
+    if (!target) return false;
+
+    if (w.type === 'sword') player.swordSwingStart = animT;
+    else player.swingStart = animT;
+    tools[w.key] -= 1;
+    updateInventoryHUD();
+    target.hp -= w.dmg;
+    target.hitFlash = animT;
+
+    // knock the target back a little
+    const fdx = target.px - player.px, fdy = target.py - player.py;
+    const flen = Math.hypot(fdx, fdy) || 1;
+    moveEntityWithCollision(target, fdx, fdy, 320, 0.05);
+    if (!target.type){
+      target.fleeDx = fdx / flen;
+      target.fleeDy = fdy / flen;
+      target.fleeUntil = animT + PIG_FLEE_DURATION;
+    }
+
+    if (target.hp <= 0) killCreature(target, true);
+    else showToast('Ramte ' + creatureName(target).toLowerCase() + ' (-' + w.dmg + ')');
+    return true;
+  }
+
+  // ---------- pigs ----------
+  const PIG_MAX_HP = 3;
+  const PIG_SPEED = 90;
+  const PIG_FLEE_DURATION = 3.0;
+  let lastFullToastAt = -999;
+
+  function spawnPig(minDist){
+    if (pigs.length >= PIG_CAP) return;
+    const spot = findGroundSpawnTile(minDist === undefined ? MIN_SPAWN_DIST : minDist);
+    if (!spot) return;
+    pigs.push({
+      px: (spot.tx + 0.5) * TILE,
+      py: (spot.ty + 0.5) * TILE,
+      radius: 9,
+      dir: 'down',
+      moving: false,
+      hp: PIG_MAX_HP,
+      hitFlash: -999,
+      fleeUntil: -999,
+      fleeDx: 0,
+      fleeDy: 0,
+      wanderDx: 0,
+      wanderDy: 0,
+      wanderUntil: 0,
+      nextWanderAt: animT + randRange(2, 8),
+      bobSeed: Math.random() * Math.PI * 2
+    });
+  }
+
+  function updatePigs(dt, phase){
+    if (animT >= nextPigSpawnAt){
+      if (phase.dark < 0.5) spawnPig();
+      nextPigSpawnAt = animT + randRange(20, 28);
+    }
+
+    for (const pig of pigs){
+      pig.moving = false;
+      if (animT < pig.fleeUntil){
+        pig.moving = true;
+        pig.dir = dirFrom(pig.fleeDx, pig.fleeDy);
+        moveEntityWithCollision(pig, pig.fleeDx, pig.fleeDy, PIG_SPEED, dt);
+      } else {
+        wander(pig, PIG_SPEED, dt);
+      }
+    }
+
+    for (const h of hamPiles.slice()){
+      if (Math.hypot(player.px - h.px, player.py - h.py) < TILE * 0.6){
+        if (player_health.current >= player_health.max){
+          // already full — leave the ham for later
+          if (animT - lastFullToastAt > 3){
+            lastFullToastAt = animT;
+            showToast('Du er mæt – skinken bliver liggende');
+          }
+          continue;
+        }
+        removeFrom(hamPiles, h);
+        healPlayer(3);
+      }
+    }
+  }
+
+  function healPlayer(amount){
+    player_health.current = Math.min(player_health.max, player_health.current + amount);
+    updateHeartsHUD();
+    showToast('Spiste en skinke! +' + amount + ' ❤');
+  }
+
+  // ---------- recipes ----------
+  const TOOL_YIELD = 25;
+  const RES_NAMES = { wood: 'træ', stone: 'sten', iron: 'jern' };
+  const BUILD_RECIPES = [
+    { id: 'craftingTable', name: 'Arbejdsbord', costs: { wood: 4 }, give: 'item', amount: 1 },
+    { id: 'stoneAxe', name: 'Stenøkse', costs: { wood: 1, stone: 2 }, give: 'tool', amount: TOOL_YIELD },
+    { id: 'stoneShovel', name: 'Stenskovl', costs: { wood: 1, stone: 2 }, give: 'tool', amount: TOOL_YIELD },
+    { id: 'stonePickaxe', name: 'Stenhakke', costs: { wood: 1, stone: 10 }, give: 'tool', amount: TOOL_YIELD },
+    { id: 'torch', name: 'Fakkel', plural: 'fakler', costs: { wood: 1 }, give: 'item', amount: 4 }
+  ];
+  const TABLE_RECIPES = [
+    { id: 'ironAxe', name: 'Jernøkse', costs: { wood: 1, iron: 2 }, give: 'tool', amount: TOOL_YIELD },
+    { id: 'ironShovel', name: 'Jernskovl', costs: { wood: 1, iron: 2 }, give: 'tool', amount: TOOL_YIELD },
+    { id: 'ironPickaxe', name: 'Jernhakke', costs: { wood: 1, iron: 10 }, give: 'tool', amount: TOOL_YIELD },
+    { id: 'ironSword', name: 'Jernsværd', costs: { wood: 1, iron: 3 }, give: 'tool', amount: TOOL_YIELD },
+    { id: 'door', name: 'Dør', costs: { wood: 6 }, give: 'item', amount: 1 },
+    { id: 'torch', name: 'Fakkel', plural: 'fakler', costs: { wood: 1 }, give: 'item', amount: 4 }
+  ];
+
+  function costText(costs){
+    return Object.keys(costs).map((k) => costs[k] + ' ' + RES_NAMES[k]).join(' · ');
+  }
+  function canAfford(costs){
+    for (const k in costs) if ((resources[k] || 0) < costs[k]) return false;
+    return true;
+  }
+  function recipeInfo(r){
+    let yieldText = '';
+    if (r.give === 'tool') yieldText = ' (' + r.amount + ' slag)';
+    else if (r.amount > 1) yieldText = ' ×' + r.amount;
+    return r.name + yieldText + ' — ' + costText(r.costs);
+  }
+
+  function craftRecipe(r){
+    if (gameOver) return;
+    if (!canAfford(r.costs)){
+      showToast('Mangler ' + costText(r.costs) + ' til ' + r.name.toLowerCase());
+      return;
+    }
+    for (const k in r.costs) resources[k] -= r.costs[k];
+    if (r.give === 'tool') tools[r.id] += r.amount;
+    else items[r.id] += r.amount;
+    updateResourceHUD();
+    updateInventoryHUD();
+    if (r.give === 'tool') showToast('Craftede ' + r.name.toLowerCase() + ' (' + r.amount + ' slag)');
+    else if (r.amount > 1) showToast('Craftede ' + r.amount + ' ' + r.plural + '!');
+    else showToast('Craftede ' + r.name.toLowerCase() + '!');
+  }
+
+  // ---------- placeables ----------
+  const PLACEABLES = [
+    { id: 'dirt', name: 'Jord', store: resources, kind: 'block', tile: TILE_DIRT },
+    { id: 'wood', name: 'Træblok', store: resources, kind: 'block', tile: TILE_PLANK },
+    { id: 'stone', name: 'Stenblok', store: resources, kind: 'block', tile: TILE_STONEBLOCK },
+    { id: 'craftingTable', name: 'Arbejdsbord', store: items, kind: 'object' },
+    { id: 'door', name: 'Dør', store: items, kind: 'object' },
+    { id: 'torch', name: 'Fakkel', store: items, kind: 'object' }
+  ];
+
+  function placeThing(p){
+    closeMenus();
+    if (gameOver) return;
+    if (p.store[p.id] <= 0) return;
+    const f = facingTile();
+    if (!inBounds(f.x, f.y)){ showToast('Kan ikke placere her'); return; }
+    const i = idx(f.x, f.y);
+    const t = terrain[i];
+    const tree = treeAt.get(i);
+    if (tree && !tree.chopped){ showToast('Der står et træ i vejen'); return; }
+    if (placedAt.has(i)){ showToast('Der står allerede noget her'); return; }
+    if (tileOccupied(f.x, f.y)){ showToast('Der står nogen i vejen – tag et skridt tilbage'); return; }
+
+    if (p.kind === 'block'){
+      if (!(isGrass(t) || t === TILE_SAND || t === TILE_BEDROCK || t === TILE_WATER)){
+        showToast('Kan ikke placere her');
+        return;
+      }
+      underTile.set(i, t);
+      terrain[i] = p.tile;
+    } else {
+      if (!isDry(f.x, f.y)){ showToast(p.name + ' skal stå på tør jord'); return; }
+      const obj = { x: f.x, y: f.y, type: p.id, openAmt: 0 };
+      placedObjects.push(obj);
+      placedAt.set(i, obj);
+    }
+    // a placed thing replaces any stump, flowers or pebbles on the tile
+    if (tree){ removeFrom(trees, tree); treeAt.delete(i); }
+    clearDecorAt(f.x, f.y);
+    p.store[p.id] -= 1;
+    updateResourceHUD();
+    updateInventoryHUD();
+    showToast('Placerede ' + p.name.toLowerCase());
+  }
+
+  function removeObject(o){
+    removeFrom(placedObjects, o);
+    placedAt.delete(idx(o.x, o.y));
+  }
+
+  const OBJECT_NAMES = { craftingTable: 'arbejdsbordet', door: 'døren', torch: 'faklen' };
+  function breakObject(o){
+    const axe = bestAxeTier();
+    if (axe && o.type !== 'torch'){
+      tools[axe] -= 1;
+      player.swingStart = animT;
+    }
+    removeObject(o);
+    items[o.type] += 1;
+    updateInventoryHUD();
+    showToast('Tog ' + OBJECT_NAMES[o.type] + ' op');
+  }
+
+  function restoreGround(i){
+    const under = underTile.has(i) ? underTile.get(i) : TILE_GRASS1;
+    underTile.delete(i);
+    terrain[i] = under;
+  }
+
+  // ---------- collision ----------
+  function solidTileAt(px, py, mover){
+    const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+    if (!walkable(tx, ty)) return true;
+    const i = idx(tx, ty);
+    const t = treeAt.get(i);
+    if (t && !t.chopped) return true;
+    const o = placedAt.get(i);
+    if (o){
+      if (o.type === 'torch') return false;
+      // doors only ever open for the player
+      if (o.type === 'door') return !(mover === player && o.openAmt > 0.6);
+      return true;
+    }
+    return false;
+  }
+
+  function moveEntityWithCollision(entity, dx, dy, speed, dt){
+    if (dx === 0 && dy === 0) return;
+    const ftx = Math.floor(entity.px / TILE), fty = Math.floor((entity.py + entity.radius * 0.5) / TILE);
+    if (inBounds(ftx, fty) && terrain[idx(ftx, fty)] === TILE_WATER) speed *= WATER_SPEED;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = entity.px + (dx / len) * speed * dt;
+    const ny = entity.py + (dy / len) * speed * dt;
+    const r = entity.radius;
+
+    if (!solidTileAt(nx - r, entity.py - r * 0.4, entity) && !solidTileAt(nx + r, entity.py - r * 0.4, entity) &&
+        !solidTileAt(nx - r, entity.py + r, entity) && !solidTileAt(nx + r, entity.py + r, entity)){
+      entity.px = nx;
+    }
+    if (!solidTileAt(entity.px - r, ny - r * 0.4, entity) && !solidTileAt(entity.px + r, ny - r * 0.4, entity) &&
+        !solidTileAt(entity.px - r, ny + r, entity) && !solidTileAt(entity.px + r, ny + r, entity)){
+      entity.py = ny;
+    }
+    entity.px = Math.max(TILE * 0.3, Math.min(WORLD_W * TILE - TILE * 0.3, entity.px));
+    entity.py = Math.max(TILE * 0.3, Math.min(WORLD_H * TILE - TILE * 0.3, entity.py));
+  }
+
+  function updateDoors(dt){
+    for (const o of placedObjects){
+      if (o.type !== 'door') continue;
+      const cx = (o.x + 0.5) * TILE, cy = (o.y + 0.5) * TILE;
+      const near = Math.hypot(player.px - cx, player.py - cy) < TILE * 1.25;
+      const inside = tileOverlapsEntity(o.x, o.y, player);
+      const target = (!gameOver && (near || inside)) ? 1 : 0;
+      const step = dt * 6;
+      if (o.openAmt < target) o.openAmt = Math.min(target, o.openAmt + step);
+      else if (o.openAmt > target) o.openAmt = Math.max(target, o.openAmt - step);
+    }
+  }
+
+  function tileInFacingDirection(dist){
+    const tx = Math.floor(player.px / TILE);
+    const ty = Math.floor(player.py / TILE);
+    if (player.dir === 'up') return { x: tx, y: ty - dist };
+    if (player.dir === 'down') return { x: tx, y: ty + dist };
+    if (player.dir === 'left') return { x: tx - dist, y: ty };
+    return { x: tx + dist, y: ty };
+  }
+  function facingTile(){ return tileInFacingDirection(1); }
+
+  let toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600);
+  }
+
+  // ---------- actions ----------
+  const AXE_HITS_NEEDED = { stoneAxe: 4, ironAxe: 3 };
+  const HAND_HITS = 10;
+  function hitsNeeded(){
+    const axeTier = bestAxeTier();
+    return axeTier ? AXE_HITS_NEEDED[axeTier] : HAND_HITS;
+  }
+
+  function chop(){
+    const here = { x: Math.floor(player.px / TILE), y: Math.floor(player.py / TILE) };
+    const face = facingTile();
+    let target = treeAt.get(idx(face.x, face.y));
+    if (!inBounds(face.x, face.y) || !target || target.chopped) target = treeAt.get(idx(here.x, here.y));
+    if (!target || target.chopped) return false;
+    const axeTier = bestAxeTier();
+    if (!axeTier && resources.stone <= 0){
+      // bare hands can't do anything to the trunk — it just shakes
+      target.chipTime = animT;
+      showToast('Du skal bruge en økse eller sten for at fælde træer.');
+      return true;
+    }
+    const needed = hitsNeeded();
+    if (axeTier){
+      player.swingStart = animT;
+      tools[axeTier] -= 1;
+      updateInventoryHUD();
+    } else {
+      // no axe: each blow uses up one stone
+      resources.stone -= 1;
+      updateResourceHUD();
+    }
+    target.hits += 1;
+    target.chipTime = animT;
+    if (target.hits >= needed){
+      target.chopped = true;
+      resources.wood += 5;
+      updateResourceHUD();
+      showToast('Træet faldt! +5 træ');
+    } else {
+      showToast((axeTier ? 'Hak i træet (' : 'Slår på træet med en sten (') + target.hits + '/' + needed + ')');
+    }
+    return true;
+  }
+
+  // natural stone → bedrock (+1 stone, maybe iron); a placed stone block comes back as 1 stone
+  function mine(i, t){
+    if (t === TILE_BEDROCK){
+      showToast('Bjergarten kan ikke hakkes.');
+      return true;
+    }
+    const pickaxeTier = bestPickaxeTier();
+    if (!pickaxeTier){
+      showToast('Du mangler en hakke.');
+      return true;
+    }
+    tools[pickaxeTier] -= 1;
+    updateInventoryHUD();
+    player.pickSwingStart = animT;
+    resources.stone += 1;
+    if (t === TILE_STONEBLOCK){
+      restoreGround(i);
+      updateResourceHUD();
+      showToast('Hakkede stenblokken løs. +1 sten');
+      return true;
+    }
+    terrain[i] = TILE_BEDROCK;
+    if (ironStoneSet.has(i)){
+      ironStoneSet.delete(i);
+      resources.iron += 1;
+      showToast('+1 sten og +1 jern!');
+    } else {
+      showToast('+1 sten');
+    }
+    updateResourceHUD();
+    return true;
+  }
+
+  // shovel: grass is dug away (+1 dirt) leaving the stone underneath; a dirt block is dug back up
+  function dig(f, i, t){
+    const shovelTier = bestShovelTier();
+    if (!shovelTier){
+      showToast('Du skal bruge en skovl for at grave.');
+      return true;
+    }
+    if (t !== TILE_DIRT && tileOccupied(f.x, f.y)){
+      showToast('Træd et skridt tilbage for at grave.');
+      return true;
+    }
+    tools[shovelTier] -= 1;
+    updateInventoryHUD();
+    player.shovelSwingStart = animT;
+    resources.dirt += 1;
+    if (t === TILE_DIRT){
+      restoreGround(i);
+      showToast('Gravede jordblokken op. +1 jord');
+    } else {
+      terrain[i] = TILE_STONE;
+      clearDecorAt(f.x, f.y);
+      if (rng() < 0.12) ironStoneSet.add(i);
+      showToast('Gravede jord væk! +1 jord');
+    }
+    updateResourceHUD();
+    return true;
+  }
+
+  function interactFacing(){
+    if (chop()) return true;
+    const f = facingTile();
+    if (!inBounds(f.x, f.y)) return false;
+    const i = idx(f.x, f.y);
+    const o = placedAt.get(i);
+    if (o){ breakObject(o); return true; }
+    const t = terrain[i];
+    if (t === TILE_PLANK){
+      const axe = bestAxeTier();
+      if (axe){ tools[axe] -= 1; player.swingStart = animT; updateInventoryHUD(); }
+      restoreGround(i);
+      resources.wood += 1;
+      updateResourceHUD();
+      showToast('Tog træblokken ned. +1 træ');
+      return true;
+    }
+    if (t === TILE_STONE || t === TILE_STONEBLOCK || t === TILE_BEDROCK) return mine(i, t);
+    if (t === TILE_DIRT || isGrass(t)) return dig(f, i, t);
+    return false;
+  }
+
+  function performAction(){
+    if (gameOver || openMenu) return;
+    maybeHideHelp();
+    if (tryMeleeAttack()) return;
+    interactFacing();
+  }
+
+  function checkNearCraftingTable(){
+    const tx = Math.floor(player.px / TILE), ty = Math.floor(player.py / TILE);
+    for (let dy = -1; dy <= 1; dy++){
+      for (let dx = -1; dx <= 1; dx++){
+        if (!inBounds(tx + dx, ty + dy)) continue;
+        const o = placedAt.get(idx(tx + dx, ty + dy));
+        if (o && o.type === 'craftingTable') return true;
+      }
+    }
+    return false;
+  }
+
+  // ---------- HUD ----------
+  function updateResourceHUD(){
+    for (const k in resourceEls) resourceEls[k].textContent = resources[k];
+    refreshMenus();
+  }
+
+  const toolCountEls = {};
+  const toolStatEls = {};
+  function buildToolsHUD(){
+    for (const t of TOOL_LIST){
+      if (!t){
+        const div = document.createElement('div');
+        div.className = 'tier-divider';
+        toolsRowEl.appendChild(div);
+        continue;
+      }
+      const stat = document.createElement('div');
+      stat.className = 'stat empty';
+      stat.title = t.name;
+      const img = document.createElement('img');
+      img.className = 'hud-icon';
+      img.src = ICONS[t.key];
+      img.alt = '';
+      const count = document.createElement('span');
+      count.textContent = '0';
+      stat.append(img, count);
+      toolsRowEl.appendChild(stat);
+      toolCountEls[t.key] = count;
+      toolStatEls[t.key] = stat;
+    }
+  }
+
+  function updateInventoryHUD(){
+    for (const key in toolCountEls){
+      toolCountEls[key].textContent = tools[key];
+      toolStatEls[key].classList.toggle('empty', tools[key] <= 0);
+    }
+    refreshMenus();
+  }
+
+  // ---------- menus ----------
+  let openMenu = null;
+
+  function renderGrid(gridEl, entries, totalSlots, infoEl){
+    gridEl.textContent = '';
+    for (let n = 0; n < totalSlots; n++){
+      const e = entries[n];
+      const slot = document.createElement('div');
+      slot.className = 'slot';
+      if (e){
+        slot.classList.add('filled');
+        if (e.disabled) slot.classList.add('disabled');
+        const img = document.createElement('img');
+        img.src = ICONS[e.icon];
+        img.alt = e.name;
+        slot.appendChild(img);
+        if (e.count !== undefined){
+          const c = document.createElement('span');
+          c.className = 'count';
+          c.textContent = e.count;
+          slot.appendChild(c);
+        }
+        slot.title = e.info;
+        slot.addEventListener('mouseenter', () => { infoEl.textContent = e.info; });
+        slot.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          infoEl.textContent = e.info;
+          e.onClick();
+        });
+      }
+      gridEl.appendChild(slot);
+    }
+  }
+
+  function recipeEntries(list){
+    return list.map((r) => ({
+      icon: r.id,
+      name: r.name,
+      info: recipeInfo(r),
+      disabled: !canAfford(r.costs),
+      onClick: () => craftRecipe(r)
+    }));
+  }
+
+  function renderBuildMenu(){
+    const placeEntries = PLACEABLES.filter((p) => p.store[p.id] > 0).map((p) => ({
+      icon: p.id,
+      name: p.name,
+      count: p.store[p.id],
+      info: p.name + ' — ' + p.store[p.id] + ' stk. Klik for at placere',
+      onClick: () => placeThing(p)
+    }));
+    renderGrid(placeGridEl, placeEntries, 64, placeInfoEl);
+    if (!placeEntries.length) placeInfoEl.textContent = 'Du har ikke noget at placere endnu.';
+    renderGrid(buildCraftGridEl, recipeEntries(BUILD_RECIPES), 64, buildCraftInfoEl);
+  }
+
+  function renderTableMenu(){
+    renderGrid(tableCraftGridEl, recipeEntries(TABLE_RECIPES), 8, tableCraftInfoEl);
+  }
+
+  function clearKeys(){ keys.w = keys.a = keys.s = keys.d = false; }
+
+  function openBuildMenu(){
+    if (gameOver) return;
+    openMenu = 'build';
+    clearKeys();
+    placeInfoEl.textContent = 'Klik på en ting for at placere den foran dig.';
+    buildCraftInfoEl.textContent = 'Klik på en ting for at crafte den.';
+    renderBuildMenu();
+    tableMenuEl.classList.remove('show');
+    buildMenuEl.classList.add('show');
+    maybeHideHelp();
+  }
+  function openTableMenu(){
+    if (gameOver) return;
+    if (!checkNearCraftingTable()){
+      showToast('Stå ved siden af et arbejdsbord og tryk E');
+      return;
+    }
+    openMenu = 'table';
+    clearKeys();
+    tableCraftInfoEl.textContent = 'Klik på en ting for at crafte den.';
+    renderTableMenu();
+    buildMenuEl.classList.remove('show');
+    tableMenuEl.classList.add('show');
+    maybeHideHelp();
+  }
+  function closeMenus(){
+    openMenu = null;
+    buildMenuEl.classList.remove('show');
+    tableMenuEl.classList.remove('show');
+  }
+  function refreshMenus(){
+    if (openMenu === 'build') renderBuildMenu();
+    else if (openMenu === 'table') renderTableMenu();
+  }
+
+  [buildMenuEl, tableMenuEl].forEach((el) => {
+    el.addEventListener('click', (e) => { if (e.target === el) closeMenus(); });
+    el.querySelector('[data-close]').addEventListener('click', closeMenus);
+  });
+
+  // ---------- input ----------
+  const keys = { w: false, a: false, s: false, d: false };
+  const keyMap = { w: 'w', arrowup: 'w', a: 'a', arrowleft: 'a', s: 's', arrowdown: 's', d: 'd', arrowright: 'd' };
+
+  function pressQ(){ if (openMenu === 'build') closeMenus(); else openBuildMenu(); }
+  function pressE(){ if (openMenu === 'table') closeMenus(); else openTableMenu(); }
+
+  window.addEventListener('keydown', (e) => {
+    const lower = e.key.toLowerCase();
+    const k = keyMap[lower];
+    if (k){
+      if (!openMenu) keys[k] = true;
+      e.preventDefault();
+    }
+    if (e.repeat && (lower === 'q' || lower === 'e')) return;
+    if (e.key === ' '){ performAction(); e.preventDefault(); }
+    else if (lower === 'q'){ pressQ(); e.preventDefault(); }
+    else if (lower === 'e'){ pressE(); e.preventDefault(); }
+    else if (e.key === 'Escape' && openMenu){ closeMenus(); e.preventDefault(); }
+  });
+  window.addEventListener('keyup', (e) => {
+    const k = keyMap[e.key.toLowerCase()];
+    if (k){ keys[k] = false; e.preventDefault(); }
+  });
+  window.addEventListener('blur', () => clearKeys());
+
+  document.querySelectorAll('.pad button, .action-pad button').forEach((btn) => {
+    const k = btn.getAttribute('data-key');
+    const isAction = k === ' ' || k === 'e' || k === 'q';
+    const start = (e) => {
+      e.preventDefault();
+      if (isAction){
+        if (k === ' ') performAction();
+        else if (k === 'q') pressQ();
+        else pressE();
+        btn.classList.add('active'); setTimeout(() => btn.classList.remove('active'), 150);
+        return;
+      }
+      if (!openMenu) keys[k] = true;
+      btn.classList.add('active');
+    };
+    const end = (e) => { e.preventDefault(); if (!isAction) keys[k] = false; btn.classList.remove('active'); };
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', end);
+    btn.addEventListener('pointerleave', end);
+    btn.addEventListener('pointercancel', end);
+  });
+
+  let helpHidden = false;
+  function maybeHideHelp(){
+    if (helpHidden) return;
+    helpHidden = true;
+    setTimeout(() => { helpEl.style.opacity = '0'; }, 4000);
+  }
+
+  // ---------- camera & resize ----------
+  const lightCanvas = document.createElement('canvas');
+  const lctx = lightCanvas.getContext('2d');
+  function resize(){
+    const w = Math.max(100, viewport.clientWidth);
+    const h = Math.max(100, viewport.clientHeight);
+    if (canvas.width === w && canvas.height === h) return;
+    canvas.width = w;
+    canvas.height = h;
+    lightCanvas.width = w;
+    lightCanvas.height = h;
+  }
+  window.addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(viewport);
+  resize();
+
+  // ---------- rendering ----------
+  // deterministic pseudo-random per tile, so the speckle pattern never flickers between frames
+  function tileHash(x, y, salt){
+    let h = (x * 92821 + y * 68917 + salt * 193939) | 0;
+    h = h ^ (h << 13);
+    h = h ^ (h >>> 17);
+    h = h ^ (h << 5);
+    return ((h >>> 0) % 10000) / 10000;
+  }
+
+  // five shades per grass variant, lightest to darkest — kept close so each
+  // tile type still reads as a distinct tone at a glance
+  const GRASS_SHADES = {
+    0: ['#3c7429', '#447f2e', '#4a8a33', '#509238', '#579c3e'],
+    1: ['#345c21', '#3c6b27', '#447f2e', '#4a8834', '#4f9139'],
+    2: ['#427a2c', '#4a8a33', '#5a9c3f', '#60a645', '#67b04c']
+  };
+  const GRASS_GRID = 8;
+  const GRASS_CELL = TILE / GRASS_GRID;
+
+  // a simple soft-edged oval shadow, shared by Steve, monsters and trees —
+  // drawn as its own layer between the ground and the character/tree above it
+  function drawSoftShadow(cx, cy, rx, ry){
+    ctx.save();
+    ctx.filter = 'blur(3px)';
+    ctx.fillStyle = 'rgba(10, 14, 8, 0.66)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawNoiseTile(x, y, shades, salt){
+    const px = x * TILE, py = y * TILE;
+    for (let cy = 0; cy < GRASS_GRID; cy++){
+      for (let cx = 0; cx < GRASS_GRID; cx++){
+        const r = tileHash(x * GRASS_GRID + cx, y * GRASS_GRID + cy, salt);
+        ctx.fillStyle = shades[Math.min(shades.length - 1, Math.floor(r * shades.length))];
+        ctx.fillRect(px + cx * GRASS_CELL, py + cy * GRASS_CELL, GRASS_CELL, GRASS_CELL);
+      }
+    }
+  }
+
+  function drawGrass(x, y, type){
+    drawNoiseTile(x, y, GRASS_SHADES[type], type + 11);
+  }
+  const WATER_SHADES = ['#2c5a8e', '#31629a', '#3669a2', '#3a6ea5', '#3f75ac', '#4a80b6'];
+  const SAND_SHADES = ['#bfa45c', '#c6ab62', '#cdb36a', '#d3b971', '#d9c17b'];
+  function drawWater(x, y){
+    drawNoiseTile(x, y, WATER_SHADES, 41);
+    // a few pale ripple pixels drifting slowly across the surface
+    const px = x * TILE, py = y * TILE;
+    const drift = Math.floor(animT * 2) % GRASS_GRID;
+    ctx.fillStyle = 'rgba(200,225,255,0.28)';
+    for (let k = 0; k < 2; k++){
+      const r = tileHash(x, y, 130 + k);
+      const cx = (Math.floor(r * GRASS_GRID) + drift) % GRASS_GRID;
+      const cy = Math.floor(tileHash(y, x, 140 + k) * GRASS_GRID);
+      ctx.fillRect(px + cx * GRASS_CELL, py + cy * GRASS_CELL, GRASS_CELL * 2, GRASS_CELL);
+    }
+  }
+  // dug-out stone: pixel-noised like grass, but darker and framed with a
+  // shadowed edge all round so it reads as a hole sunk into the ground
+  const STONE_SHADES = ['#55554f', '#616159', '#6c6c64', '#75756c', '#7f7f76', '#88887e'];
+  function drawStone(x, y){
+    const px = x * TILE, py = y * TILE;
+    drawNoiseTile(x, y, STONE_SHADES, 53);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(px, py, TILE, 4);
+    ctx.fillRect(px, py, 4, TILE);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(px, py + TILE - 4, TILE, 4);
+    ctx.fillRect(px + TILE - 4, py, 4, TILE);
+    if (ironStoneSet.has(idx(x, y))){
+      ctx.fillStyle = IRON_SPOT;
+      ctx.fillRect(px + 7, py + 8, 5, 5);
+      ctx.fillRect(px + 18, py + 13, 4, 4);
+      ctx.fillRect(px + 12, py + 21, 5, 4);
+    }
+  }
+  function drawBedrock(x, y){
+    const px = x * TILE, py = y * TILE;
+    ctx.fillStyle = (x * 7 + y * 3) % 5 === 0 ? BEDROCK_DARK : BEDROCK;
+    ctx.fillRect(px, py, TILE, TILE);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(px + 4, py + TILE - 8, TILE - 8, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(px + 6, py + 6, 4, 4);
+    ctx.fillRect(px + 19, py + 15, 3, 3);
+  }
+  function drawSand(x, y){
+    drawNoiseTile(x, y, SAND_SHADES, 23);
+  }
+
+  // placed blocks get a raised bevel (light top/left, dark bottom/right),
+  // the opposite of the sunken dug-out stone, so they read as built walls
+  function drawRaisedBevel(px, py){
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(px, py, TILE, 3);
+    ctx.fillRect(px, py, 3, TILE);
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.fillRect(px, py + TILE - 4, TILE, 4);
+    ctx.fillRect(px + TILE - 3, py, 3, TILE);
+  }
+  const DIRT_SHADES = ['#5b3b22', '#664227', '#71492b', '#7c5230', '#875b36'];
+  function drawDirtBlock(x, y){
+    const px = x * TILE, py = y * TILE;
+    drawNoiseTile(x, y, DIRT_SHADES, 71);
+    ctx.fillStyle = '#4a3019';
+    for (let k = 0; k < 4; k++){
+      const r1 = tileHash(x, y, 90 + k), r2 = tileHash(y, x, 95 + k);
+      ctx.fillRect(px + 4 + Math.floor(r1 * 22), py + 4 + Math.floor(r2 * 22), 2, 2);
+    }
+    ctx.fillStyle = '#a07a52';
+    for (let k = 0; k < 3; k++){
+      const r1 = tileHash(x, y, 110 + k), r2 = tileHash(y, x, 115 + k);
+      ctx.fillRect(px + 5 + Math.floor(r1 * 20), py + 5 + Math.floor(r2 * 20), 2, 2);
+    }
+    drawRaisedBevel(px, py);
+  }
+  function drawPlank(x, y){
+    const px = x * TILE, py = y * TILE;
+    for (let r = 0; r < 4; r++){
+      ctx.fillStyle = r % 2 ? '#9a6a3a' : '#a8773f';
+      ctx.fillRect(px, py + r * 8, TILE, 8);
+      ctx.fillStyle = '#6e4824';
+      ctx.fillRect(px, py + r * 8 + 7, TILE, 1);
+      ctx.fillRect(px + (r % 2 ? 9 : 21), py + r * 8, 1, 7);
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      ctx.fillRect(px + 3 + ((r * 7) % 13), py + r * 8 + 3, 5, 1);
+    }
+    drawRaisedBevel(px, py);
+  }
+  const COBBLE_SHADES = ['#7e7e78', '#8a8a84', '#96968f', '#a2a29a'];
+  function drawStoneBlock(x, y){
+    const px = x * TILE, py = y * TILE;
+    drawNoiseTile(x, y, COBBLE_SHADES, 61);
+    ctx.fillStyle = '#4f4f4a';
+    ctx.fillRect(px, py + 10, TILE, 2);
+    ctx.fillRect(px, py + 21, TILE, 2);
+    ctx.fillRect(px + 13, py, 2, 10);
+    ctx.fillRect(px + 6, py + 12, 2, 9);
+    ctx.fillRect(px + 22, py + 12, 2, 9);
+    ctx.fillRect(px + 15, py + 23, 2, 9);
+    drawRaisedBevel(px, py);
+  }
+
+  function drawGroundStone(s){
+    const px = s.x * TILE + TILE / 2, py = s.y * TILE + TILE / 2 + 6;
+    drawSoftShadow(px, py + 2, 7, 2.5);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(s.rot);
+    ctx.fillStyle = '#9a9a92';
+    ctx.beginPath();
+    ctx.moveTo(-6, 2); ctx.lineTo(-3, -4); ctx.lineTo(3, -5); ctx.lineTo(6, 1); ctx.lineTo(2, 4); ctx.lineTo(-3, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#7e7e76';
+    ctx.beginPath();
+    ctx.moveTo(-3, -4); ctx.lineTo(3, -5); ctx.lineTo(1, -1); ctx.lineTo(-2, -1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#8c8c84';
+    ctx.beginPath();
+    ctx.ellipse(6, 3, 2.6, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawFlower(f){
+    const px = f.x * TILE + TILE / 2, py = f.y * TILE + TILE / 2 + 6;
+    ctx.fillStyle = '#3f7a2b';
+    ctx.fillRect(px - 1, py - 4, 2, 6);
+    ctx.fillStyle = f.hue;
+    if (f.c === 'daisy'){
+      ctx.fillRect(px - 4, py - 8, 8, 3);
+      ctx.fillRect(px - 1.5, py - 11, 3, 8);
+      ctx.fillStyle = '#e8c84a';
+      ctx.fillRect(px - 1.5, py - 8, 3, 3);
+    } else {
+      ctx.fillRect(px - 3, py - 9, 6, 5);
+    }
+  }
+
+  function drawBonePile(b){
+    const px = b.px, py = b.py + 6;
+    drawSoftShadow(px, py + 2, 11, 4);
+    const bone = '#e8e2d0';
+    const boneDark = '#c9c2ac';
+    // ribcage, lying flat: a short spine with ribs fanning off it
+    ctx.fillStyle = bone;
+    ctx.fillRect(px - 8, py - 4, 2, 9);
+    for (let i = 0; i < 3; i++){
+      ctx.fillRect(px - 6, py - 3 + i * 3, 6 - i * 1.2, 1.6);
+    }
+    ctx.fillStyle = boneDark;
+    ctx.fillRect(px - 8, py - 4, 2, 2);
+    // a loose limb bone cast beside the ribcage
+    ctx.save();
+    ctx.translate(px + 6, py + 2);
+    ctx.rotate(-0.55);
+    ctx.fillStyle = bone;
+    ctx.fillRect(-7, -1.2, 14, 2.4);
+    ctx.beginPath(); ctx.arc(-7, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // skull, with a jaw, eye sockets and a nose notch
+    ctx.fillStyle = bone;
+    ctx.fillRect(px + 1, py - 10, 7, 6);
+    ctx.fillRect(px + 2, py - 4.5, 5, 2.5);
+    ctx.fillStyle = boneDark;
+    ctx.fillRect(px + 1, py - 10, 7, 1.5);
+    ctx.fillStyle = '#211f1b';
+    ctx.fillRect(px + 2.2, py - 8.2, 1.6, 1.8);
+    ctx.fillRect(px + 5.2, py - 8.2, 1.6, 1.8);
+    ctx.fillRect(px + 3.8, py - 5.8, 1.2, 1.2);
+  }
+
+  function drawHam(h){
+    const px = h.px, py = h.py + 4;
+    drawSoftShadow(px, py + 3, 9, 3);
+    ctx.fillStyle = '#c97a52';
+    ctx.beginPath();
+    ctx.ellipse(px, py, 7, 5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#a85f3e';
+    ctx.beginPath();
+    ctx.ellipse(px - 1, py + 1, 5, 3, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#eee6d2';
+    ctx.fillRect(px + 5, py - 2, 6, 2);
+    ctx.beginPath();
+    ctx.arc(px + 11, py - 1, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // creatures flash bright for a moment when hit (call after the shadow, inside save/restore)
+  function beginHitFlash(e, now){
+    const t = now - e.hitFlash;
+    if (t >= 0 && t < 0.15) ctx.filter = 'brightness(2.4)';
+  }
+
+  const DIR_VECS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+
+  function drawPig(pig, now){
+    const dirVec = DIR_VECS[pig.dir] || [0, 1];
+    const bob = pig.moving ? Math.sin(now * 8 + pig.bobSeed) * 1.5 : Math.sin(now * 1.6 + pig.bobSeed) * 0.4;
+    const flip = pig.dir === 'left' ? -1 : 1;
+
+    ctx.save();
+    ctx.translate(pig.px, pig.py + bob);
+    drawSoftShadow(0, 11, 11, 4);
+    beginHitFlash(pig, now);
+    ctx.scale(flip, 1);
+
+    ctx.fillStyle = '#c97a9a';
+    ctx.fillRect(-8, 5, 4, 6);
+    ctx.fillRect(5, 5, 4, 6);
+    ctx.fillStyle = '#eda7c0';
+    ctx.fillRect(-10, -6, 20, 13);
+    ctx.fillStyle = '#e191ae';
+    ctx.fillRect(-10, 4, 20, 3);
+    ctx.fillStyle = '#eda7c0';
+    ctx.fillRect(-9, -11, 4, 5);
+    ctx.fillRect(2, -11, 4, 5);
+
+    // curly tail, opposite the direction it's facing
+    ctx.strokeStyle = '#e191ae';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const tailX = -dirVec[0] * 10, tailY = -dirVec[1] * 4;
+    ctx.moveTo(tailX, tailY - 2);
+    ctx.quadraticCurveTo(tailX - dirVec[0] * 4, tailY - 6, tailX, tailY - 8);
+    ctx.stroke();
+
+    // snout, toward the direction it's facing
+    const snoutX = dirVec[0] * 9, snoutY = dirVec[1] * 4;
+    ctx.fillStyle = '#f2b9cf';
+    ctx.fillRect(snoutX - 3, snoutY - 2, 6, 5);
+    ctx.fillStyle = '#b5607f';
+    ctx.fillRect(snoutX - 2, snoutY, 1.3, 1.3);
+    ctx.fillRect(snoutX + 1, snoutY, 1.3, 1.3);
+
+    ctx.fillStyle = '#2a2a26';
+    ctx.fillRect(-3, -4, 1.5, 1.5);
+    ctx.fillRect(3, -4, 1.5, 1.5);
+    ctx.restore();
+  }
+
+  function attackLunge(m, now){
+    const t = now - m.attackSwingStart;
+    const duration = 0.3;
+    if (t < 0 || t > duration) return 0;
+    return Math.sin((t / duration) * Math.PI) * 7;
+  }
+
+  function drawZombie(z, now){
+    const dirVec = DIR_VECS[z.dir] || [0, 1];
+    const lunge = attackLunge(z, now);
+    const bob = z.moving ? Math.sin(now * 8 + z.bobSeed) * 2 : Math.sin(now * 1.6 + z.bobSeed) * 0.6;
+    const flip = z.dir === 'left' ? -1 : 1;
+
+    ctx.save();
+    ctx.translate(z.px + dirVec[0] * lunge, z.py + bob + dirVec[1] * lunge * 0.5);
+    drawSoftShadow(0, 15, 10, 4);
+    beginHitFlash(z, now);
+    ctx.scale(flip, 1);
+
+    // legs
+    ctx.fillStyle = '#333c42';
+    ctx.fillRect(-7, 6, 6, 10);
+    ctx.fillRect(1, 6, 6, 10);
+    // torso — tattered shirt
+    ctx.fillStyle = '#4a5c66';
+    ctx.fillRect(-8, -8, 16, 16);
+    ctx.fillStyle = '#394a53';
+    ctx.fillRect(-8, 4, 16, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(5, -2, 3, 6);
+    // arms, held forward in the classic shamble
+    ctx.fillStyle = '#5a6e78';
+    ctx.fillRect(-13, -9, 6, 5);
+    ctx.fillRect(7, -9, 6, 5);
+    ctx.fillRect(-13, -9 + (z.moving ? Math.sin(now * 8 + z.bobSeed) * 2 : 0), 5, 10);
+    ctx.fillRect(8, -9 + (z.moving ? -Math.sin(now * 8 + z.bobSeed) * 2 : 0), 5, 10);
+    // head
+    ctx.fillStyle = '#5a6e78';
+    ctx.fillRect(-7, -22, 14, 14);
+    ctx.fillStyle = '#39474f';
+    ctx.fillRect(-7, -22, 14, 4);
+    ctx.fillStyle = '#c23a2a';
+    ctx.fillRect(-4, -16, 2, 2);
+    ctx.fillRect(2, -16, 2, 2);
+    ctx.fillStyle = '#232c30';
+    ctx.fillRect(-3, -11, 6, 2);
+    ctx.restore();
+  }
+
+  function drawSpider(m, now){
+    const dirVec = DIR_VECS[m.dir] || [0, 1];
+    const lunge = attackLunge(m, now);
+    ctx.save();
+    ctx.translate(m.px + dirVec[0] * lunge, m.py + 2 + dirVec[1] * lunge * 0.5);
+    drawSoftShadow(0, 8, 15, 4);
+    beginHitFlash(m, now);
+
+    // eight legs, scuttling
+    ctx.strokeStyle = '#231b16';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++){
+      const ph = m.moving ? Math.sin(now * 16 + i * 1.7 + m.bobSeed) * 2.2 : 0;
+      const ly = -5 + i * 3.4;
+      ctx.moveTo(-5, ly); ctx.lineTo(-11, ly - 4 + ph); ctx.lineTo(-15, ly + 4 + ph);
+      ctx.moveTo(5, ly); ctx.lineTo(11, ly - 4 - ph); ctx.lineTo(15, ly + 4 - ph);
+    }
+    ctx.stroke();
+
+    // abdomen + head
+    ctx.fillStyle = '#3a2e26';
+    ctx.beginPath(); ctx.ellipse(0, 3, 8.5, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4a3a2e';
+    ctx.fillRect(-3, 0, 6, 2);
+    ctx.fillRect(-2, 4, 4, 2);
+    ctx.fillStyle = '#2b221c';
+    ctx.beginPath(); ctx.ellipse(0, -6, 6, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // eyes
+    ctx.fillStyle = '#e0332a';
+    ctx.fillRect(-4, -8, 2.5, 2.5);
+    ctx.fillRect(1.5, -8, 2.5, 2.5);
+    ctx.fillRect(-2.5, -5, 1.5, 1.5);
+    ctx.fillRect(1, -5, 1.5, 1.5);
+    ctx.restore();
+  }
+
+  function drawSkeleton(m, now){
+    const bob = m.moving ? Math.sin(now * 8 + m.bobSeed) * 2 : Math.sin(now * 1.6 + m.bobSeed) * 0.6;
+    const flip = m.dir === 'left' ? -1 : 1;
+    const bone = '#dedbd0', boneDark = '#a8a597';
+
+    ctx.save();
+    ctx.translate(m.px, m.py + bob);
+    drawSoftShadow(0, 15, 9, 4);
+    beginHitFlash(m, now);
+    ctx.scale(flip, 1);
+
+    // legs
+    ctx.fillStyle = bone;
+    ctx.fillRect(-5, 6, 3, 10);
+    ctx.fillRect(2, 6, 3, 10);
+    // ribcage
+    ctx.fillRect(-7, -8, 14, 14);
+    ctx.fillStyle = '#3a3a36';
+    ctx.fillRect(-5, -5, 10, 1.5);
+    ctx.fillRect(-5, -1.5, 10, 1.5);
+    ctx.fillRect(-5, 2, 10, 1.5);
+    ctx.fillStyle = boneDark;
+    ctx.fillRect(-1, -8, 2, 14);
+    // arms
+    ctx.fillStyle = bone;
+    ctx.fillRect(-10, -7, 3, 11);
+    ctx.fillRect(7, -7, 3, 9);
+    // bow, string pulled back just after a shot
+    const pull = Math.max(0, 1 - (now - m.attackSwingStart) / 0.4);
+    ctx.strokeStyle = '#7a4e26';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(10, -1, 9, -1.15, 1.15);
+    ctx.stroke();
+    ctx.strokeStyle = '#e8e8e0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const sx1 = 10 + Math.cos(-1.15) * 9, sy1 = -1 + Math.sin(-1.15) * 9;
+    const sx2 = 10 + Math.cos(1.15) * 9, sy2 = -1 + Math.sin(1.15) * 9;
+    ctx.moveTo(sx1, sy1);
+    ctx.lineTo(sx1 - 3 * pull, -1);
+    ctx.lineTo(sx2, sy2);
+    ctx.stroke();
+    // skull
+    ctx.fillStyle = '#ebe8de';
+    ctx.fillRect(-7, -22, 14, 14);
+    ctx.fillStyle = boneDark;
+    ctx.fillRect(-7, -22, 14, 2);
+    ctx.fillStyle = '#26241f';
+    ctx.fillRect(-4.5, -18, 3, 3);
+    ctx.fillRect(1.5, -18, 3, 3);
+    ctx.fillRect(-0.7, -14, 1.5, 1.5);
+    ctx.fillStyle = '#6f6c62';
+    ctx.fillRect(-4, -11, 8, 1);
+    ctx.restore();
+  }
+
+  const CREEPER_SHADES = ['#3d8a2e', '#4a9e38', '#5cb547', '#72c95a', '#357a28'];
+  const CREEPER_BLINK_SHADES = ['#d8f2cf', '#e6f8df', '#f2fcee', '#ffffff', '#cdebc2'];
+  function drawCreeper(m, now){
+    const T = MONSTER_TYPES.creeper;
+    const bob = m.moving ? Math.sin(now * 7 + m.bobSeed) * 1.2 : 0;
+    const p = m.fuseStart >= 0 ? Math.min(1, (now - m.fuseStart) / T.fuse) : 0;
+    const swell = 1 + p * 0.2;
+    const blink = p > 0 && Math.sin(now * (14 + p * 30)) > 0;
+    const shades = blink ? CREEPER_BLINK_SHADES : CREEPER_SHADES;
+
+    ctx.save();
+    ctx.translate(m.px, m.py + bob);
+    drawSoftShadow(0, 15, 9, 4);
+    beginHitFlash(m, now);
+    ctx.scale(swell, swell);
+
+    // four stubby feet
+    ctx.fillStyle = blink ? '#e6f8df' : '#2f6e24';
+    ctx.fillRect(-7, 9, 5, 6);
+    ctx.fillRect(2, 9, 5, 6);
+    // body + head
+    drawPixelNoiseRect(-6, -8, 12, 18, shades, 31, 2);
+    drawPixelNoiseRect(-8, -24, 16, 16, shades, 77, 2);
+    // the face
+    ctx.fillStyle = '#10160c';
+    ctx.fillRect(-6, -20, 4, 4);
+    ctx.fillRect(2, -20, 4, 4);
+    ctx.fillRect(-2, -16, 4, 4);
+    ctx.fillRect(-4, -13, 2, 4);
+    ctx.fillRect(2, -13, 2, 4);
+    ctx.restore();
+  }
+
+  const MONSTER_DRAW = { zombie: drawZombie, spider: drawSpider, skeleton: drawSkeleton, creeper: drawCreeper };
+
+  function drawArrow(a){
+    const ang = Math.atan2(a.vy, a.vx);
+    ctx.save();
+    ctx.translate(a.px, a.py);
+    ctx.rotate(ang);
+    ctx.fillStyle = '#6e4824';
+    ctx.fillRect(-8, -0.75, 13, 1.5);
+    ctx.fillStyle = '#cfcfcf';
+    ctx.beginPath();
+    ctx.moveTo(8, 0); ctx.lineTo(4, -2.5); ctx.lineTo(4, 2.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#eeeeee';
+    ctx.fillRect(-9, -2.2, 3, 1.4);
+    ctx.fillRect(-9, 0.8, 3, 1.4);
+    ctx.restore();
+  }
+
+  function drawParticles(){
+    for (const p of particles){
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / p.max));
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.px - p.size / 2, p.py - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawExplosions(){
+    for (const e of explosions){
+      const t = Math.min(1, (animT - e.t0) / 0.45);
+      const r = 20 + t * 60;
+      const g = ctx.createRadialGradient(e.px, e.py, 0, e.px, e.py, r);
+      g.addColorStop(0, 'rgba(255,245,200,' + (0.9 * (1 - t)).toFixed(2) + ')');
+      g.addColorStop(0.5, 'rgba(250,150,50,' + (0.6 * (1 - t)).toFixed(2) + ')');
+      g.addColorStop(1, 'rgba(200,60,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(e.px, e.py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // deep, cool-toned greens and bark browns — clearly darker and more saturated
+  // than the grass palette, so trees read as distinct objects against the ground
+  const TRUNK_SHADES = ['#3f2a16', '#4a3119', '#54381c', '#5e4020'];
+  const LEAF_SHADES_A = ['#173d20', '#1d4a27', '#23572e', '#296436'];
+  const LEAF_SHADES_B = ['#223d16', '#294a1b', '#305820', '#366525'];
+
+  function drawPixelNoiseRect(x, y, w, h, shades, salt, cell){
+    const startX = Math.floor(x / cell) * cell;
+    const startY = Math.floor(y / cell) * cell;
+    for (let yy = startY; yy < y + h; yy += cell){
+      for (let xx = startX; xx < x + w; xx += cell){
+        const r = tileHash(Math.round(xx / cell), Math.round(yy / cell), salt);
+        ctx.fillStyle = shades[Math.min(shades.length - 1, Math.floor(r * shades.length))];
+        ctx.fillRect(Math.max(xx, x), Math.max(yy, y), cell, cell);
+      }
+    }
+  }
+
+  // a cut stump — drawn flat on the ground, behind characters, not as a tall billboard
+  function drawStump(tree){
+    const px = tree.x * TILE + TILE / 2, py = tree.y * TILE + TILE - 6;
+    drawSoftShadow(px, py + 3, 8, 3);
+    ctx.fillStyle = '#5a3a1c';
+    ctx.fillRect(px - 7, py - 3, 14, 7);
+    ctx.fillStyle = '#4a2f16';
+    ctx.fillRect(px - 7, py + 2, 14, 2);
+    ctx.fillStyle = '#6e4824';
+    ctx.fillRect(px - 7, py - 3, 2, 7);
+    ctx.fillStyle = '#c99a62';
+    ctx.beginPath();
+    ctx.ellipse(px, py - 3, 7, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#a97b45';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(px, py - 3, 4.6, 2.3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(px, py - 3, 2.3, 1.1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#8a6136';
+    ctx.beginPath();
+    ctx.ellipse(px, py - 3, 1, 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawTree(tree, now){
+    const baseX = tree.x * TILE + TILE / 2;
+    const baseY = tree.y * TILE + TILE - 2;
+
+    // each hit chops a piece off the top of the tree (not a uniform shrink);
+    // trees sit 15% larger than a tile at full health
+    const needed = hitsNeeded();
+    const chunksGone = Math.min(tree.hits, needed);
+    const scale = 1.15;
+    const sinceHit = tree.chipTime !== undefined ? now - tree.chipTime : 99;
+    const shake = sinceHit < 0.15 ? Math.sin(sinceHit * 90) * 2 * (1 - sinceHit / 0.15) : 0;
+
+    ctx.save();
+    ctx.translate(baseX + shake, baseY);
+    ctx.scale(scale, scale);
+    ctx.translate(-baseX, -baseY);
+    drawSoftShadow(baseX, baseY, 14, 5);
+
+    const topY = baseY - 20;
+    const topMost = topY - 34;
+    const fullHeight = baseY - topMost;
+    const clipTop = topMost + fullHeight * (chunksGone / needed);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(baseX - 20, clipTop, 40, baseY - clipTop + 4);
+    ctx.clip();
+    drawPixelNoiseRect(baseX - 5, baseY - 20, 10, 20, TRUNK_SHADES, tree.x * 131 + tree.y * 7 + 1, 2);
+    const leafShades = tree.variant === 0 ? LEAF_SHADES_A : LEAF_SHADES_B;
+    drawPixelNoiseRect(baseX - 16, topY - 26, 32, 28, leafShades, tree.x * 211 + tree.y * 17 + 2, 2);
+    drawPixelNoiseRect(baseX - 11, topY - 34, 22, 10, leafShades, tree.x * 211 + tree.y * 17 + 3, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(baseX - 16, topY - 8, 32, 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(baseX - 14, topY - 24, 10, 8);
+    ctx.restore();
+    ctx.restore();
+
+    // crack marks accumulate on the trunk as hits land
+    if (tree.hits > 0){
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < Math.min(tree.hits, 6); i++){
+        const cy = baseY - 4 - i * 3;
+        ctx.beginPath();
+        ctx.moveTo(baseX - 4 + (i % 2) * 2, cy);
+        ctx.lineTo(baseX + 4 - (i % 2) * 2, cy - 2);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawCraftingTable(obj){
+    const px = obj.x * TILE + TILE / 2;
+    const baseY = obj.y * TILE + TILE - 2;
+    const h = 22;
+    // body — oak planks
+    ctx.fillStyle = '#a06a3a';
+    ctx.fillRect(px - 14, baseY - h, 28, h);
+    ctx.fillStyle = '#8a5a30';
+    ctx.fillRect(px - 14, baseY - h, 28, 4);
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px - 14, baseY - h + 9); ctx.lineTo(px + 14, baseY - h + 9);
+    ctx.moveTo(px - 14, baseY - h + 16); ctx.lineTo(px + 14, baseY - h + 16);
+    ctx.stroke();
+    // top grid
+    ctx.fillStyle = '#c98f52';
+    ctx.fillRect(px - 12, baseY - h - 5, 24, 6);
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.moveTo(px, baseY - h - 5); ctx.lineTo(px, baseY - h + 1);
+    ctx.moveTo(px - 12, baseY - h - 2); ctx.lineTo(px + 12, baseY - h - 2);
+    ctx.stroke();
+    // legs
+    ctx.fillStyle = '#6e4824';
+    ctx.fillRect(px - 13, baseY - 6, 4, 6);
+    ctx.fillRect(px + 9, baseY - 6, 4, 6);
+  }
+
+  function drawDoor(o){
+    const x0 = o.x * TILE, baseY = o.y * TILE + TILE - 2, H = 28;
+    const open = o.openAmt || 0;
+    // frame
+    ctx.fillStyle = '#4a2f16';
+    ctx.fillRect(x0 + 2, baseY - H - 2, 3, H + 2);
+    ctx.fillRect(x0 + TILE - 5, baseY - H - 2, 3, H + 2);
+    ctx.fillRect(x0 + 2, baseY - H - 4, TILE - 4, 3);
+    // door leaf, swinging in toward the left post
+    const fullW = TILE - 10;
+    const w = Math.max(3, fullW * (1 - open * 0.86));
+    const lx = x0 + 5;
+    ctx.fillStyle = open > 0.5 ? '#7a4e26' : '#9c6a3f';
+    ctx.fillRect(lx, baseY - H, w, H);
+    if (w > 8){
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillRect(lx + Math.round(w / 3), baseY - H, 1, H);
+      ctx.fillRect(lx + Math.round(2 * w / 3), baseY - H, 1, H);
+      ctx.fillStyle = '#6e4824';
+      ctx.fillRect(lx + 1, baseY - H + 5, w - 2, 3);
+      ctx.fillRect(lx + 1, baseY - 9, w - 2, 3);
+      ctx.fillStyle = '#d8c070';
+      ctx.fillRect(lx + w - 5, baseY - H / 2 - 1, 2, 3);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(lx, baseY - 2, w, 2);
+  }
+
+  function drawTorch(o, now){
+    const px = o.x * TILE + TILE / 2, base = o.y * TILE + TILE - 6;
+    const f = Math.sin(now * 12 + o.x * 3 + o.y) * 0.8;
+    drawSoftShadow(px, base + 2, 4, 2);
+    ctx.fillStyle = '#6e4824';
+    ctx.fillRect(px - 1.5, base - 14, 3, 14);
+    ctx.fillStyle = '#3a2a1a';
+    ctx.fillRect(px - 2, base - 16, 4, 3);
+    ctx.fillStyle = '#f08a2c';
+    ctx.beginPath();
+    ctx.ellipse(px, base - 20, 3.4, 5 + f, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffe17a';
+    ctx.beginPath();
+    ctx.ellipse(px, base - 19, 1.7, 2.8 + f * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawObject(o, now){
+    if (o.type === 'craftingTable') drawCraftingTable(o);
+    else if (o.type === 'door') drawDoor(o);
+    else if (o.type === 'torch') drawTorch(o, now);
+  }
+
+  function checkNearTree(){
+    const tx = Math.floor(player.px / TILE), ty = Math.floor(player.py / TILE);
+    const neighbors = [[tx, ty - 1], [tx, ty + 1], [tx - 1, ty], [tx + 1, ty]];
+    for (const [nx, ny] of neighbors){
+      if (!inBounds(nx, ny)) continue;
+      const t = treeAt.get(idx(nx, ny));
+      if (t && !t.chopped) return true;
+    }
+    return false;
+  }
+
+  function weaponSwingAngle(swingStart, now, duration, amplitude, restAngle){
+    const t = now - swingStart;
+    if (t < 0 || t > duration) return restAngle;
+    return restAngle + Math.sin((t / duration) * Math.PI) * amplitude;
+  }
+
+  const STONE_COLORS = { main: '#9a9a96', dark: '#6e6e6a' };
+  const IRON_COLORS = { main: '#dcdcd8', dark: '#aeaeaa' };
+  const IRON_BLADE = { main: '#e8e8e4', dark: '#b8b8b2' };
+  const tierColors = (tier) => (tier && tier.indexOf('iron') === 0) ? IRON_COLORS : STONE_COLORS;
+
+  function drawShovelInHand(now, tier){
+    const colors = tierColors(tier);
+    ctx.save();
+    ctx.translate(9, -7);
+    ctx.rotate(weaponSwingAngle(player.shovelSwingStart, now, 0.28, 1.1, -0.1));
+    ctx.fillStyle = '#8a5a30';
+    ctx.fillRect(1, -13, 2, 16);
+    ctx.fillStyle = colors.main;
+    ctx.fillRect(-1, -17, 5, 6);
+    ctx.fillStyle = colors.dark;
+    ctx.fillRect(-1, -17, 5, 2);
+    ctx.restore();
+  }
+
+  function drawPickaxeInHand(now, tier){
+    const colors = tierColors(tier);
+    ctx.save();
+    ctx.translate(9, -7);
+    ctx.rotate(weaponSwingAngle(player.pickSwingStart, now, 0.28, 1.2, -0.1));
+    ctx.fillStyle = '#8a5a30';
+    ctx.fillRect(1, -13, 2, 16);
+    ctx.fillStyle = colors.main;
+    ctx.fillRect(-4, -16, 10, 3);
+    ctx.fillStyle = colors.dark;
+    ctx.fillRect(-5, -14, 2, 3);
+    ctx.fillRect(5, -14, 2, 3);
+    ctx.restore();
+  }
+
+  function drawAxeInHand(now, tier){
+    // pivot near the shoulder/hand so the whole axe swings as one piece
+    const colors = tierColors(tier);
+    ctx.save();
+    ctx.translate(9, -7);
+    ctx.rotate(weaponSwingAngle(player.swingStart, now, 0.28, 1.3, -0.15));
+    ctx.fillStyle = '#8a5a30';
+    ctx.fillRect(1, -11, 2, 14);
+    ctx.fillStyle = colors.main;
+    ctx.fillRect(-2, -15, 8, 6);
+    ctx.fillStyle = colors.dark;
+    ctx.fillRect(-2, -15, 8, 2);
+    ctx.restore();
+  }
+
+  function drawSwordInHand(now){
+    const colors = IRON_BLADE;
+    ctx.save();
+    ctx.translate(9, -7);
+    ctx.rotate(weaponSwingAngle(player.swordSwingStart, now, 0.2, 1.7, -0.35));
+    ctx.fillStyle = '#5a3a1c';
+    ctx.fillRect(0, -3, 3, 5);
+    ctx.fillStyle = '#8a7a3a';
+    ctx.fillRect(-2, -5, 7, 2);
+    ctx.fillStyle = colors.main;
+    ctx.fillRect(0.5, -19, 2, 14);
+    ctx.fillStyle = colors.dark;
+    ctx.fillRect(0.5, -19, 1, 14);
+    ctx.restore();
+  }
+
+  function drawPlayer(now, heldItem){
+    const px = player.px, py = player.py;
+    const bob = player.moving ? Math.sin(now * 10) * 2 : 0;
+    const legOffset = player.moving ? Math.sin(now * 10) * 4 : 0;
+    const facing = player.dir;
+    const flip = facing === 'left' ? -1 : 1;
+
+    ctx.save();
+    ctx.translate(px, py + bob);
+    drawSoftShadow(0, 15, 10, 4);
+    ctx.scale(flip, 1);
+
+    // legs
+    ctx.fillStyle = '#3b4a8a';
+    ctx.fillRect(-7, 6 + legOffset * 0.3, 6, 10 - legOffset);
+    ctx.fillRect(1, 6 - legOffset * 0.3, 6, 10 + legOffset);
+    // torso
+    ctx.fillStyle = '#17a39a';
+    ctx.fillRect(-8, -8, 16, 16);
+    ctx.fillStyle = '#128079';
+    ctx.fillRect(-8, 4, 16, 4);
+    // arms
+    ctx.fillStyle = '#e8b98a';
+    ctx.fillRect(-11, -7, 4, 12);
+    ctx.fillRect(7, -7, 4, 12);
+
+    if (heldItem){
+      if (heldItem.type === 'axe') drawAxeInHand(now, heldItem.tier);
+      else if (heldItem.type === 'sword') drawSwordInHand(now);
+      else if (heldItem.type === 'shovel') drawShovelInHand(now, heldItem.tier);
+      else if (heldItem.type === 'pickaxe') drawPickaxeInHand(now, heldItem.tier);
+    }
+
+    // head
+    if (facing === 'up'){
+      ctx.fillStyle = '#4a3220';
+      ctx.fillRect(-7, -22, 14, 14);
+      ctx.fillStyle = '#3a2718';
+      ctx.fillRect(-7, -22, 14, 3);
+      ctx.fillRect(-7, -22, 2, 14);
+    } else {
+      ctx.fillStyle = '#e8b98a';
+      ctx.fillRect(-7, -22, 14, 14);
+      ctx.fillStyle = '#4a3220';
+      ctx.fillRect(-7, -22, 14, 4);
+      ctx.fillRect(-7, -22, 3, 8);
+      if (facing === 'down') ctx.fillRect(4, -22, 3, 8);
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(2, -15, 2, 2);
+      if (facing !== 'left' && facing !== 'right'){
+        ctx.fillRect(-4, -15, 2, 2);
+      }
+    }
+    ctx.restore();
+  }
+
+  // which tool Steve holds up depends on what's in front of him
+  function pickHeldItem(){
+    const w = bestWeapon();
+    if (w && nearestCreature(MELEE_RANGE)) return { type: w.type, tier: w.key };
+    const f = facingTile();
+    const ok = inBounds(f.x, f.y);
+    const t = ok ? terrain[idx(f.x, f.y)] : -1;
+    const obj = ok ? placedAt.get(idx(f.x, f.y)) : null;
+    const axe = bestAxeTier(), pick = bestPickaxeTier(), shovel = bestShovelTier();
+    if (axe && (checkNearTree() || t === TILE_PLANK || (obj && obj.type !== 'torch'))) return { type: 'axe', tier: axe };
+    if (pick && (t === TILE_STONE || t === TILE_STONEBLOCK)) return { type: 'pickaxe', tier: pick };
+    if (shovel && (isGrass(t) || t === TILE_DIRT)) return { type: 'shovel', tier: shovel };
+    return null;
+  }
+
+  // ---------- darkness ----------
+  function punchLight(x, y, r){
+    const g = lctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(0.45, 'rgba(0,0,0,0.8)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    lctx.fillStyle = g;
+    lctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  function drawDarkness(camX, camY, dark){
+    if (dark <= 0.01) return;
+    lctx.globalCompositeOperation = 'source-over';
+    lctx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
+    lctx.fillStyle = 'rgba(6,10,30,' + dark.toFixed(3) + ')';
+    lctx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
+    lctx.globalCompositeOperation = 'destination-out';
+    if (!gameOver) punchLight(player.px - camX, player.py - camY - 6, 95);
+    const torches = placedObjects.filter((o) => o.type === 'torch');
+    for (const o of torches){
+      const flick = Math.sin(animT * 9 + o.x * 2) * 5;
+      punchLight((o.x + 0.5) * TILE - camX, o.y * TILE + TILE - 26 - camY, 125 + flick);
+    }
+    ctx.drawImage(lightCanvas, 0, 0);
+    // a warm glow around each flame
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const o of torches){
+      const x = (o.x + 0.5) * TILE - camX, y = o.y * TILE + TILE - 26 - camY;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 70);
+      g.addColorStop(0, 'rgba(255,170,60,' + (0.22 * dark).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(255,170,60,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 70, y - 70, 140, 140);
+    }
+    ctx.restore();
+  }
+
+  // ---------- icons (drawn once, with the same art as the world) ----------
+  function makeIcon(fn){
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 32;
+    const saved = ctx;
+    ctx = c.getContext('2d');
+    try { fn(); } finally { ctx = saved; }
+    return c.toDataURL();
+  }
+
+  function drawToolIcon(kind, c){
+    ctx.save();
+    ctx.translate(16, 16);
+    ctx.rotate(Math.PI / 4);
+    if (kind === 'sword'){
+      ctx.fillStyle = c.main; ctx.fillRect(-2.5, -15, 5, 19);
+      ctx.fillStyle = c.dark; ctx.fillRect(-2.5, -15, 2, 19);
+      ctx.fillStyle = '#8a7a3a'; ctx.fillRect(-7, 4, 14, 3);
+      ctx.fillStyle = '#5a3a1c'; ctx.fillRect(-1.5, 7, 3, 6);
+      ctx.fillStyle = '#8a7a3a'; ctx.fillRect(-2.5, 12.5, 5, 2.5);
+    } else {
+      ctx.fillStyle = '#8a5a30'; ctx.fillRect(-1.5, -10, 3, 24);
+      ctx.fillStyle = '#6e4824'; ctx.fillRect(-1.5, -10, 1, 24);
+      if (kind === 'axe'){
+        ctx.fillStyle = c.main; ctx.fillRect(1.5, -13, 8, 10);
+        ctx.fillStyle = c.dark; ctx.fillRect(1.5, -13, 8, 2); ctx.fillRect(7.5, -13, 2, 10);
+      } else if (kind === 'shovel'){
+        ctx.fillStyle = c.main; ctx.fillRect(-5, -16, 10, 8);
+        ctx.fillRect(-3.5, -18, 7, 2);
+        ctx.fillStyle = c.dark; ctx.fillRect(-5, -10, 10, 2);
+      } else if (kind === 'pickaxe'){
+        ctx.fillStyle = c.main; ctx.fillRect(-12, -13, 24, 4);
+        ctx.fillStyle = c.dark; ctx.fillRect(-13, -10, 3, 4); ctx.fillRect(10, -10, 3, 4);
+        ctx.fillRect(-12, -13, 24, 1.5);
+      }
+    }
+    ctx.restore();
+  }
+
+  const ICONS = {
+    dirt: makeIcon(() => drawDirtBlock(0, 0)),
+    wood: makeIcon(() => drawPlank(0, 0)),
+    stone: makeIcon(() => drawStoneBlock(0, 0)),
+    craftingTable: makeIcon(() => drawCraftingTable({ x: 0, y: 0 })),
+    door: makeIcon(() => { ctx.translate(0, 3); drawDoor({ x: 0, y: 0, openAmt: 0 }); }),
+    torch: makeIcon(() => { ctx.translate(0, 3); drawTorch({ x: 0, y: 0 }, 0.3); }),
+    stoneAxe: makeIcon(() => drawToolIcon('axe', STONE_COLORS)),
+    stoneShovel: makeIcon(() => drawToolIcon('shovel', STONE_COLORS)),
+    stonePickaxe: makeIcon(() => drawToolIcon('pickaxe', STONE_COLORS)),
+    ironAxe: makeIcon(() => drawToolIcon('axe', IRON_COLORS)),
+    ironShovel: makeIcon(() => drawToolIcon('shovel', IRON_COLORS)),
+    ironPickaxe: makeIcon(() => drawToolIcon('pickaxe', IRON_COLORS)),
+    ironSword: makeIcon(() => drawToolIcon('sword', IRON_BLADE))
+  };
+
+  buildToolsHUD();
+  updateResourceHUD();
+  updateInventoryHUD();
+
+  // a couple of pigs to start with, a little way off
+  spawnPig(5);
+  spawnPig(5);
+
+  // ---------- main loop ----------
+  function frame(now){
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    animT += dt;
+
+    let heldItem = null;
+    let phase = dayPhase();
+    if (!gameOver){
+      worldTime += dt;
+      phase = dayPhase();
+      if (phase.phase !== lastPhase){
+        if (phase.phase === 'day'){
+          // sunrise: zombies and skeletons go up in smoke over the next few seconds
+          for (const m of monsters){
+            if (MONSTER_TYPES[m.type].burns && m.burnAt < 0) m.burnAt = animT + randRange(0.3, 3.5);
+          }
+          showToast('Solen står op');
+        } else if (phase.phase === 'dusk'){
+          showToast('Det bliver mørkt... monstrene kommer snart');
+        } else if (phase.phase === 'night'){
+          nextNightSpawnAt = animT + 1;
+        }
+        lastPhase = phase.phase;
+        dayStatEl.textContent = PHASE_LABELS[phase.phase];
+      }
+
+      const dx = openMenu ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+      const dy = openMenu ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+      player.moving = dx !== 0 || dy !== 0;
+      if (player.moving) maybeHideHelp();
+      if (dx < 0) player.dir = 'left';
+      else if (dx > 0) player.dir = 'right';
+      else if (dy < 0) player.dir = 'up';
+      else if (dy > 0) player.dir = 'down';
+      moveEntityWithCollision(player, dx, dy, player.speed, dt);
+      updateDoors(dt);
+      updateMonsters(dt, phase);
+      updatePigs(dt, phase);
+      updateArrows(dt);
+
+      for (const s of groundStones){
+        if (Math.hypot(player.px - (s.x * TILE + TILE / 2), player.py - (s.y * TILE + TILE / 2)) < TILE * 0.55){
+          removeFrom(groundStones, s);
+          resources.stone += 2;
+          updateResourceHUD();
+          showToast('+2 sten');
+          break;
+        }
+      }
+
+      coordsEl.textContent = Math.floor(player.px / TILE) + ', ' + Math.floor(player.py / TILE);
+      if (openMenu === 'table' && !checkNearCraftingTable()) closeMenus();
+      heldItem = pickHeldItem();
+    } else {
+      player.moving = false;
+      updateDoors(dt);
+    }
+    updateParticles(dt);
+
+    const camX = Math.max(0, Math.min(WORLD_W * TILE - canvas.width, player.px - canvas.width / 2));
+    const camY = Math.max(0, Math.min(WORLD_H * TILE - canvas.height, player.py - canvas.height / 2));
+
+    ctx.fillStyle = '#0c0f08';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-Math.round(camX), -Math.round(camY));
+
+    const minTx = Math.max(0, Math.floor(camX / TILE) - 1);
+    const maxTx = Math.min(WORLD_W - 1, Math.ceil((camX + canvas.width) / TILE) + 1);
+    const minTy = Math.max(0, Math.floor(camY / TILE) - 1);
+    const maxTy = Math.min(WORLD_H - 1, Math.ceil((camY + canvas.height) / TILE) + 1);
+    const visible = (tx, ty, pad) => tx >= minTx - pad && tx <= maxTx + pad && ty >= minTy - pad && ty <= maxTy + pad;
+
+    for (let y = minTy; y <= maxTy; y++){
+      for (let x = minTx; x <= maxTx; x++){
+        const t = terrain[idx(x, y)];
+        if (t === TILE_WATER) drawWater(x, y);
+        else if (t === TILE_STONE) drawStone(x, y);
+        else if (t === TILE_BEDROCK) drawBedrock(x, y);
+        else if (t === TILE_SAND) drawSand(x, y);
+        else if (t === TILE_DIRT) drawDirtBlock(x, y);
+        else if (t === TILE_PLANK) drawPlank(x, y);
+        else if (t === TILE_STONEBLOCK) drawStoneBlock(x, y);
+        else drawGrass(x, y, t);
+      }
+    }
+    for (const f of flowers) if (visible(f.x, f.y, 0)) drawFlower(f);
+    for (const s of groundStones) if (visible(s.x, s.y, 0)) drawGroundStone(s);
+    for (const b of bonePiles) if (visible(Math.floor(b.px / TILE), Math.floor(b.py / TILE), 0)) drawBonePile(b);
+    for (const h of hamPiles) if (visible(Math.floor(h.px / TILE), Math.floor(h.py / TILE), 0)) drawHam(h);
+    for (const t of trees) if (t.chopped && visible(t.x, t.y, 0)) drawStump(t);
+
+    const entities = [];
+    for (const t of trees){
+      if (!t.chopped && visible(t.x, t.y, 1)) entities.push({ baseY: t.y * TILE + TILE, draw: () => drawTree(t, animT) });
+    }
+    for (const o of placedObjects){
+      if (visible(o.x, o.y, 1)) entities.push({ baseY: o.y * TILE + TILE, draw: () => drawObject(o, animT) });
+    }
+    for (const m of monsters){
+      if (visible(Math.floor(m.px / TILE), Math.floor(m.py / TILE), 1)) entities.push({ baseY: m.py, draw: () => MONSTER_DRAW[m.type](m, animT) });
+    }
+    for (const pig of pigs){
+      if (visible(Math.floor(pig.px / TILE), Math.floor(pig.py / TILE), 1)) entities.push({ baseY: pig.py, draw: () => drawPig(pig, animT) });
+    }
+    if (!gameOver){
+      entities.push({ baseY: player.py, draw: () => drawPlayer(animT, heldItem) });
+    } else if (animT - deathTime < DEATH_DURATION){
+      entities.push({ baseY: player.py, draw: () => drawPlayerDeath(animT, heldItem) });
+    }
+    if (tombstone){
+      entities.push({ baseY: (Math.floor(tombstone.py / TILE) + 1) * TILE, draw: () => drawTombstone(tombstone, animT) });
+    }
+    entities.sort((a, b) => a.baseY - b.baseY);
+    for (const e of entities) e.draw();
+
+    for (const a of arrows) drawArrow(a);
+    drawParticles();
+    ctx.restore();
+
+    drawDarkness(Math.round(camX), Math.round(camY), phase.dark);
+
+    if (explosions.length){
+      ctx.save();
+      ctx.translate(-Math.round(camX), -Math.round(camY));
+      drawExplosions();
+      ctx.restore();
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // small handle for poking at the game from the console
+  window.__blokkeland = {
+    resources, items, tools, monsters, pigs, player, placedObjects, terrain, idx, player_health,
+    setTime: (t) => { worldTime = t; },
+    spawnMonsterAt: (type, tx, ty) => monsters.push(makeMonster(type, tx, ty)),
+    refresh: () => { updateResourceHUD(); updateInventoryHUD(); }
+  };
+})();
+</script>
+</body>
+</html>
