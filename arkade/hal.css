@@ -73,7 +73,7 @@ h3 {
   margin: 0;
   font-family: var(--display);
   color: var(--papir);
-  line-height: 0.95;
+  line-height: 1.05;
 }
 
 img {
@@ -428,7 +428,7 @@ main {
   font-family: var(--pixel);
   font-weight: 700;
   font-size: clamp(12px, 8.5cqw, 120px);
-  line-height: 1;
+  line-height: 1.2;
   color: #ffffff;
   text-transform: uppercase;
   text-shadow: 0 0.06em 0 hsl(var(--h) 70% 18%), 0 0 1.2em hsl(calc(var(--h) + 180) 95% 60% / 0.5);
@@ -703,7 +703,7 @@ main {
 .helt-titel {
   font-weight: 700;
   font-size: clamp(64px, 10.5vw, 176px);
-  line-height: 0.86;
+  line-height: 1.1;
   letter-spacing: -0.005em;
   text-transform: uppercase;
   margin-left: -0.04em;
@@ -727,8 +727,9 @@ main {
   display: inline-block;
   white-space: nowrap;
   overflow: hidden;
-  padding-bottom: 0.06em;
-  margin-bottom: -0.06em;
+  /* Plads over versalerne, så ringen på Å ikke klippes af masken. */
+  padding: 0.14em 0 0.06em;
+  margin: -0.14em 0 -0.06em;
   vertical-align: top;
 }
 
@@ -1084,7 +1085,7 @@ main {
   font-weight: 700;
   font-size: clamp(44px, 6vw, 92px);
   text-transform: uppercase;
-  line-height: 0.9;
+  line-height: 1.1;
 }
 
 .ledig-banner p {
@@ -1128,7 +1129,7 @@ main {
   font-weight: 700;
   font-size: clamp(64px, 11vw, 168px);
   text-transform: uppercase;
-  line-height: 0.85;
+  line-height: 1.1;
   display: flex;
   align-items: flex-start;
   gap: 0.12em;
@@ -1285,7 +1286,7 @@ main {
 .detalje-info h1 {
   font-weight: 700;
   font-size: clamp(56px, 7.5vw, 120px);
-  line-height: 0.88;
+  line-height: 1.1;
   text-transform: uppercase;
 }
 
@@ -1382,7 +1383,7 @@ main {
 .laeg-top h1 {
   font-weight: 700;
   font-size: clamp(56px, 10vw, 160px);
-  line-height: 0.86;
+  line-height: 1.1;
   text-transform: uppercase;
 }
 
