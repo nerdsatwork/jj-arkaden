@@ -163,13 +163,23 @@
 
   // Kort med 3D-hældning efter musen (kun med mus, og kun når bevægelse er ok).
   function haeld(flade) {
+    // Højst én opdatering pr. billede, uanset hvor mange musebevægelser der kommer.
+    let naeste = null;
     flade.addEventListener("pointermove", (e) => {
       if (stille() || !kanSvaeve()) return;
-      const r = flade.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width - 0.5;
-      const y = (e.clientY - r.top) / r.height - 0.5;
-      flade.style.setProperty("--ry", `${(x * 9).toFixed(2)}deg`);
-      flade.style.setProperty("--rx", `${(-y * 7).toFixed(2)}deg`);
+      const sidst = naeste;
+      naeste = e;
+      if (sidst) return;
+      requestAnimationFrame(() => {
+        const ev = naeste;
+        naeste = null;
+        if (!ev) return;
+        const r = flade.getBoundingClientRect();
+        const x = (ev.clientX - r.left) / r.width - 0.5;
+        const y = (ev.clientY - r.top) / r.height - 0.5;
+        flade.style.setProperty("--ry", `${(x * 9).toFixed(2)}deg`);
+        flade.style.setProperty("--rx", `${(-y * 7).toFixed(2)}deg`);
+      });
     });
     flade.addEventListener("pointerleave", () => {
       flade.style.removeProperty("--ry");
@@ -369,12 +379,21 @@
   function parallakse(sektion) {
     const kab = sektion.querySelector(".kabinet");
     if (!kab) return;
+    let naeste = null;
     sektion.onpointermove = (e) => {
       if (stille() || !kanSvaeve()) return;
-      const x = e.clientX / window.innerWidth - 0.5;
-      const y = e.clientY / window.innerHeight - 0.5;
-      kab.style.setProperty("--ry", `${(-9 + x * 8).toFixed(2)}deg`);
-      kab.style.setProperty("--rx", `${(3 - y * 6).toFixed(2)}deg`);
+      const sidst = naeste;
+      naeste = e;
+      if (sidst) return;
+      requestAnimationFrame(() => {
+        const ev = naeste;
+        naeste = null;
+        if (!ev) return;
+        const x = ev.clientX / window.innerWidth - 0.5;
+        const y = ev.clientY / window.innerHeight - 0.5;
+        kab.style.setProperty("--ry", `${(-9 + x * 8).toFixed(2)}deg`);
+        kab.style.setProperty("--rx", `${(3 - y * 6).toFixed(2)}deg`);
+      });
     };
     sektion.onpointerleave = () => {
       kab.style.removeProperty("--ry");

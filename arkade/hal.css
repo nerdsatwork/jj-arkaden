@@ -143,9 +143,8 @@ code {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgb(22 21 21 / 0.72);
-  backdrop-filter: blur(18px) saturate(1.5);
-  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  /* Tæt farve i stedet for sløret glas: et sløret glas skal tegnes om ved hver rulning. */
+  background: rgb(22 21 21 / 0.94);
   border-bottom: 1px solid var(--streg);
   opacity: 0;
   transition: opacity 300ms ease;
@@ -350,9 +349,7 @@ main {
 }
 
 .knap-stille {
-  background: rgb(255 255 255 / 0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgb(255 255 255 / 0.08);
 }
 
 /* Covers: et billede, eller et cover lavet i CSS ud fra spillets navn */
@@ -485,8 +482,7 @@ main {
   position: absolute;
   inset: 6% 4% -6%;
   border-radius: 20px;
-  background: hsl(var(--h) 90% 55%);
-  filter: blur(34px);
+  background: radial-gradient(closest-side, hsl(var(--h) 90% 55% / 0.85), transparent);
   opacity: 0;
   transition: opacity 400ms ease;
   z-index: -1;
@@ -626,13 +622,10 @@ main {
   pointer-events: none;
 }
 
+/* Lyset bag helten er rene farveforløb i spillets farve. Et sløret coverbillede så
+   lidt rigere ud, men skulle tegnes om hele tiden og fik hallen til at hakke. */
 .helt-lys .cover-boks {
-  position: absolute;
-  inset: -10%;
-  aspect-ratio: auto;
-  filter: blur(70px) saturate(1.5);
-  opacity: 0.7;
-  transform: scale(1.1);
+  display: none;
 }
 
 .helt-lys::before {
@@ -640,7 +633,9 @@ main {
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: radial-gradient(45% 55% at 74% 46%, hsl(var(--h) 85% 50% / 0.28), transparent 70%);
+  background:
+    radial-gradient(45% 55% at 74% 46%, hsl(var(--h) 85% 50% / 0.34), transparent 70%),
+    radial-gradient(35% 45% at 88% 70%, hsl(calc(var(--h) + 40) 85% 50% / 0.18), transparent 70%);
 }
 
 .helt-lys::after {
