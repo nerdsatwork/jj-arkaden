@@ -60,7 +60,7 @@
 
   // Ikoner tegnet med streger (24 x 24).
   const IKONER = {
-    spil: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor" stroke="none"/>',
+    spil: '<path d="M4 12h15M13 6l6 6-6 6"/>',
     venstre: '<path d="M15 18l-6-6 6-6"/>',
     hoejre: '<path d="M9 6l6 6-6 6"/>',
     byg: '<path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z"/>',
@@ -220,7 +220,7 @@
   }
 
   function spilKnap(slug, tekst) {
-    return el("a", { class: "knap knap-spil", href: `#/spil/${slug}/spil`, "data-spil": slug }, el("span", { class: "play" }, ikon("spil")), tekst || "Spil nu");
+    return el("a", { class: "knap knap-spil", href: `#/spil/${slug}/spil`, "data-spil": slug }, tekst || "Spil nu", el("span", { class: "play" }, ikon("spil")));
   }
 
   // Kabinettet: skærmen med lamper hele vejen rundt.

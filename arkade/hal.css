@@ -314,13 +314,17 @@ main {
   transform: translateY(0) scale(0.98);
 }
 
+/* Spil-knappen: en kantet rød blok med en pil, som brandets knapper,
+   så den ikke ligner en afspilningsknap fra en videotjeneste. */
 .knap-spil {
-  padding: 10px 30px 10px 10px;
+  padding: 14px 22px 14px 28px;
+  gap: 16px;
   font-size: 22px;
+  border-radius: 0;
   background: var(--roed);
   border-color: transparent;
   color: var(--paa-roed);
-  box-shadow: 0 14px 40px -12px rgb(230 53 48 / 0.8);
+  box-shadow: 0 14px 40px -16px rgb(230 53 48 / 0.7);
 }
 
 .knap-spil:hover {
@@ -330,22 +334,17 @@ main {
 .knap-spil .play {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  background: var(--paa-roed);
-  color: var(--roed);
   transition: transform 300ms var(--fjeder);
 }
 
 .knap-spil:hover .play {
-  transform: scale(1.1);
+  transform: translateX(4px);
 }
 
 .knap-spil .play .ikon {
-  width: 20px;
-  height: 20px;
-  margin-left: 2px;
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.2;
 }
 
 .knap-stille {
@@ -515,12 +514,12 @@ main {
   bottom: 14px;
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 999px;
+  width: 48px;
+  height: 48px;
+  border-radius: 0;
   background: var(--roed);
   color: #fff;
-  box-shadow: 0 10px 30px -6px rgb(230 53 48 / 0.9);
+  box-shadow: 0 10px 30px -8px rgb(230 53 48 / 0.7);
   opacity: 0;
   transform: scale(0.6) translateY(10px);
   transition: opacity 250ms ease, transform 450ms var(--fjeder);
@@ -529,7 +528,7 @@ main {
 .kort-play .ikon {
   width: 22px;
   height: 22px;
-  margin-left: 3px;
+  stroke-width: 2.2;
 }
 
 .kort:hover .kort-flade,
