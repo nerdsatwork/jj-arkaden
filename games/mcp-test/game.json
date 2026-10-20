@@ -1,0 +1,9 @@
+{
+  "titel": "MCP-test",
+  "beskrivelse": "Et lille testspil: klik på knappen.",
+  "type": "rolig",
+  "tags": ["test"],
+  "styring": "Mus eller finger",
+  "cover": "cover.svg",
+  "dato": "2026-10-20"
+}
