@@ -104,3 +104,26 @@ test("tjekket godkender et linkkort med cover og afviser et uden", () => {
     fs.rmSync(games, { recursive: true, force: true });
   }
 });
+
+test("tjekket kræver et cover på et almindeligt spil også", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const os = require("node:os");
+  const { tjekSpil } = require("../scripts/arkaden.js");
+  const games = fs.mkdtempSync(path.join(os.tmpdir(), "arkaden-"));
+  const slug = "lille-spil";
+  const mappe = path.join(games, slug);
+  fs.mkdirSync(mappe);
+  try {
+    const skriv = (data) => fs.writeFileSync(path.join(mappe, "game.json"), JSON.stringify(data));
+    fs.writeFileSync(path.join(mappe, "index.html"), "<!doctype html><title>x</title>");
+    skriv({ titel: "Lille spil", beskrivelse: "Et spil" });
+    assert.match(tjekSpil(slug, games).fejl.join(" "), /skal have et "cover"/);
+    // Kontrol: med et cover i mappen er der ingen fejl.
+    fs.writeFileSync(path.join(mappe, "cover.svg"), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"/>');
+    skriv({ titel: "Lille spil", beskrivelse: "Et spil", cover: "cover.svg" });
+    assert.deepEqual(tjekSpil(slug, games).fejl, []);
+  } finally {
+    fs.rmSync(games, { recursive: true, force: true });
+  }
+});

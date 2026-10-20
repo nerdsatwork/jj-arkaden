@@ -3,6 +3,7 @@
   "beskrivelse": "Skabelonen: ram målene, før de forsvinder. Ret mig til dit eget spil.",
   "type": "action",
   "tags": ["skabelon"],
+  "cover": "cover.svg",
   "styring": "Mus eller finger",
   "dato": "2026-10-19"
 }

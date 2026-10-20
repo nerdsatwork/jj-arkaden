@@ -24,9 +24,9 @@ Bed Claude om det, fx "Byg et nyt spil i Arkaden ud fra skabelonen: en stjerne f
 
 ```
 games/<dit-spil>/
-  game.json       titel, beskrivelse, type, tags (og evt. forfatter, cover, styring, dato)
+  game.json       titel, beskrivelse, type, tags, cover (og evt. forfatter, styring, dato)
   index.html      spillet starter her
-  cover.png       valgfrit, 16:9, fx 1280 x 720
+  cover.png       skal være der, 16:9, fx 1280 x 720 (eller cover.svg)
   logic.js        reglerne: ingen tegning, så de kan testes
   logic.test.js   tests med node:test
   spil.js         tegning og styring

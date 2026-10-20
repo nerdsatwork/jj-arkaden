@@ -132,7 +132,10 @@ function tjekSpil(slug, games = GAMES) {
     fejl.push(`"type" skal være en af: ${TYPER.join(", ")}`);
   }
 
-  if (data.cover !== undefined) {
+  // Hvert kort har sit eget cover. Hallen kan tegne et nødcover, men det er
+  // kun til et billede, der ikke kan hentes, ikke en genvej uden om reglen.
+  if (data.cover === undefined) fejl.push(`Spillet skal have et "cover", fx "cover.png" eller "cover.svg"`);
+  else {
     const fil = lokalFil(mappe, data.cover);
     if (!fil) fejl.push(`"cover" skal være et filnavn i spillets egen mappe, fx "cover.png"`);
     else if (!BILLEDE.test(data.cover)) fejl.push(`"cover" skal være .png, .jpg, .webp, .gif eller .svg`);
@@ -148,7 +151,6 @@ function tjekSpil(slug, games = GAMES) {
     const f = linkFejl(data.url);
     if (f) fejl.push(f);
     if (data.start !== undefined) fejl.push(`Brug enten "start" (et spil i mappen) eller "url" (et projekt et andet sted), ikke begge`);
-    if (data.cover === undefined) fejl.push(`Et linkkort skal have et "cover", fx "cover.png"`);
   } else if (!startFil || !/\.html?$/i.test(start)) fejl.push(`"start" skal være en .html-fil i spillets mappe`);
   else if (!fs.existsSync(startFil)) fejl.push(`Spillet starter i games/${slug}/${start}, men filen findes ikke`);
   else {
