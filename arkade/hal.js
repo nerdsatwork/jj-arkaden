@@ -61,6 +61,7 @@
   // Ikoner tegnet med streger (24 x 24).
   const IKONER = {
     spil: '<path d="M4 12h15M13 6l6 6-6 6"/>',
+    ud: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>',
     venstre: '<path d="M15 18l-6-6 6-6"/>',
     hoejre: '<path d="M9 6l6 6-6 6"/>',
     byg: '<path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z"/>',
@@ -187,8 +188,20 @@
     });
   }
 
+  // Et linkkort peger på et projekt et andet sted (fx Vercel). Kun https og
+  // uden login i adressen; ellers behandles kortet som et almindeligt spil.
+  function linkAdresse(spil) {
+    if (!spil || typeof spil.url !== "string") return null;
+    try {
+      const u = new URL(spil.url);
+      return u.protocol === "https:" && !u.username && !u.password ? u : null;
+    } catch (fejl) {
+      return null;
+    }
+  }
+
   function kort(spil, i) {
-    const flade = el("div", { class: "kort-flade" }, cover(spil), el("span", { class: "kort-play", "aria-hidden": "true" }, ikon("spil")));
+    const flade = el("div", { class: "kort-flade" }, cover(spil), el("span", { class: "kort-play", "aria-hidden": "true" }, ikon(linkAdresse(spil) ? "ud" : "spil")));
     haeld(flade);
     return el(
       "a",
@@ -220,6 +233,10 @@
   }
 
   function spilKnap(slug, tekst) {
+    const link = linkAdresse(efterSlug.get(slug));
+    if (link) {
+      return el("a", { class: "knap knap-spil", href: link.href, target: "_blank", rel: "noopener noreferrer" }, "Åbn projektet", el("span", { class: "play" }, ikon("ud")));
+    }
     return el("a", { class: "knap knap-spil", href: `#/spil/${slug}/spil`, "data-spil": slug }, tekst || "Spil nu", el("span", { class: "play" }, ikon("spil")));
   }
 
@@ -515,7 +532,9 @@
     if (spil.styring) fakta.push(el("li", {}, ikon("styring"), spil.styring));
     if (spil.dato && !Number.isNaN(Date.parse(spil.dato)))
       fakta.push(el("li", {}, ikon("kalender"), new Date(spil.dato).toLocaleDateString("da-DK", { day: "numeric", month: "long", year: "numeric" })));
-    if (!spil.ukendt) fakta.push(el("li", {}, ikon("kode"), repo ? el("a", { href: `${repo}/tree/main/games/${slug}`, target: "_blank", rel: "noopener noreferrer", text: "Koden på GitHub" }) : el("code", { text: `games/${slug}` })));
+    const link = linkAdresse(spil);
+    if (link) fakta.push(el("li", {}, ikon("ud"), link.host));
+    else if (!spil.ukendt) fakta.push(el("li", {}, ikon("kode"), repo ? el("a", { href: `${repo}/tree/main/games/${slug}`, target: "_blank", rel: "noopener noreferrer", text: "Koden på GitHub" }) : el("code", { text: `games/${slug}` })));
 
     const knap = spilKnap(slug);
     const info = el(
@@ -625,6 +644,11 @@
 
   function startSpil(slug) {
     const spil = efterSlug.get(slug);
+    // Et linkkort spilles ikke i hallen. Gå til dets side, hvor knappen åbner det.
+    if (linkAdresse(spil)) {
+      location.replace(`#/spil/${slug}`);
+      return;
+    }
     const kilde = spil && typeof spil.start === "string" && spil.start.startsWith(`games/${slug}/`) ? spil.start : `games/${slug}/index.html`;
     stopSpil();
     const titel = spil ? spil.titel : slug;

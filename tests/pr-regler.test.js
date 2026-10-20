@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { spilIPr, maaOpdatere } = require("../scripts/arkaden.js");
+const { spilIPr, maaOpdatere, linkFejl } = require("../scripts/arkaden.js");
 const { vurder } = require("../scripts/auto-merge.js");
 
 const REPO = "nerdsatwork/jj-arkaden";
@@ -58,4 +58,49 @@ test("robotten merger ikke skabelonen, flere spil, en sletning eller en kladde",
   assert.equal(vurder({ pr: pr("x"), filer: [fil("games/a/game.json"), fil("games/b/game.json")], findesPaaMain: false, repo: REPO }).flet, false);
   assert.equal(vurder({ pr: pr("indsend/reaktion"), filer: [fil("games/reaktion/game.json", "removed")], findesPaaMain: true, repo: REPO }).flet, false);
   assert.equal(vurder({ pr: pr("indsend/ny", { draft: true }), filer: [fil("games/ny/game.json")], findesPaaMain: false, repo: REPO }).flet, false);
+});
+
+test("robotten merger aldrig et linkkort, heller ikke fra Arkaden-værktøjet", () => {
+  const filer = [fil("games/stort-projekt/game.json"), fil("games/stort-projekt/cover.png")];
+  assert.equal(vurder({ pr: pr("indsend/stort-projekt"), filer, findesPaaMain: false, repo: REPO, erLink: true }).flet, false);
+  // Kontrol: samme PR uden link merges.
+  assert.equal(vurder({ pr: pr("indsend/stort-projekt"), filer, findesPaaMain: false, repo: REPO }).flet, true);
+});
+
+test("et linkkort skal pege på en offentlig https-adresse", () => {
+  assert.equal(linkFejl("https://mit-projekt.vercel.app"), null);
+  assert.equal(linkFejl("https://example.com/sti?x=1"), null);
+  assert.match(linkFejl("http://mit-projekt.vercel.app"), /https/);
+  assert.match(linkFejl("javascript:alert(1)"), /https/);
+  assert.match(linkFejl("https://bruger:kode@example.com"), /adgangskode/);
+  assert.match(linkFejl("https://localhost"), /offentlig/);
+  assert.match(linkFejl("ikke en adresse"), /gyldig/);
+  assert.match(linkFejl("https://example.com/" + "a".repeat(200)), /200 tegn/);
+});
+
+test("tjekket godkender et linkkort med cover og afviser et uden", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const os = require("node:os");
+  const { tjekSpil } = require("../scripts/arkaden.js");
+  // En midlertidig games-mappe, så testen aldrig rører de rigtige spil.
+  const games = fs.mkdtempSync(path.join(os.tmpdir(), "arkaden-"));
+  const slug = "stort-projekt";
+  const mappe = path.join(games, slug);
+  fs.mkdirSync(mappe);
+  try {
+    const skriv = (data) => fs.writeFileSync(path.join(mappe, "game.json"), JSON.stringify(data));
+    fs.writeFileSync(path.join(mappe, "cover.svg"), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"/>');
+    skriv({ titel: "Stort projekt", beskrivelse: "Kører på Vercel", cover: "cover.svg", url: "https://stort-projekt.vercel.app" });
+    assert.deepEqual(tjekSpil(slug, games).fejl, []);
+    skriv({ titel: "Stort projekt", beskrivelse: "Kører på Vercel", url: "https://stort-projekt.vercel.app" });
+    assert.match(tjekSpil(slug, games).fejl.join(" "), /cover/);
+    skriv({ titel: "Stort projekt", beskrivelse: "Kører på Vercel", cover: "cover.svg", url: "https://x.vercel.app", start: "index.html" });
+    assert.match(tjekSpil(slug, games).fejl.join(" "), /ikke begge/);
+    // Kontrol: uden url kræves en startside igen.
+    skriv({ titel: "Stort projekt", beskrivelse: "Kører på Vercel", cover: "cover.svg" });
+    assert.match(tjekSpil(slug, games).fejl.join(" "), /index\.html/);
+  } finally {
+    fs.rmSync(games, { recursive: true, force: true });
+  }
 });

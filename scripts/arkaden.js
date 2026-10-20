@@ -13,10 +13,26 @@ const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 const NAVN = /^[^@<>\n]{1,40}$/;
 const BILLEDE = /\.(png|jpe?g|webp|gif|svg)$/i;
 const DATO = /^\d{4}-\d{2}-\d{2}$/;
-const FELTER = ["titel", "forfatter", "beskrivelse", "type", "tags", "cover", "start", "styring", "dato"];
+const FELTER = ["titel", "forfatter", "beskrivelse", "type", "tags", "cover", "start", "url", "styring", "dato"];
 const TYPER = ["action", "klassiker", "rolig"];
 const MAKS_COVER = 1024 * 1024;
 const MAKS_MAPPE = 5 * 1024 * 1024;
+
+// Et linkkort peger på et projekt, der ligger et andet sted (fx på Vercel),
+// fordi det er for stort til Arkaden. Kun https, ingen login i adressen.
+function linkFejl(url) {
+  if (typeof url !== "string" || url.length > 200) return `"url" skal være en adresse på højst 200 tegn`;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return `"url" er ikke en gyldig adresse`;
+  }
+  if (u.protocol !== "https:") return `"url" skal starte med https://`;
+  if (u.username || u.password) return `"url" må ikke indeholde brugernavn eller adgangskode`;
+  if (!u.hostname.includes(".")) return `"url" skal pege på en offentlig adresse, fx https://mit-projekt.vercel.app`;
+  return null;
+}
 
 // Alle mapper i games/. Mapper, der starter med _ (som _skabelon), er ikke spil i hallen.
 function spilmapper({ medSkabeloner = false } = {}) {
@@ -47,8 +63,8 @@ function lokalFil(mappe, navn) {
 }
 
 // Læser og tjekker ét spil. Returnerer { slug, data, fejl, advarsler }.
-function tjekSpil(slug) {
-  const mappe = path.join(GAMES, slug);
+function tjekSpil(slug, games = GAMES) {
+  const mappe = path.join(games, slug);
   const fejl = [];
   const advarsler = [];
   const skabelon = slug.startsWith("_");
@@ -124,9 +140,16 @@ function tjekSpil(slug) {
     else if (fs.statSync(fil).size > MAKS_COVER) fejl.push(`Coveret er større end 1 MB`);
   }
 
+  // Et linkkort har ingen startside i Arkaden: hallen åbner adressen i en ny fane.
+  const erLink = data.url !== undefined;
   const start = data.start === undefined ? "index.html" : data.start;
   const startFil = lokalFil(mappe, start);
-  if (!startFil || !/\.html?$/i.test(start)) fejl.push(`"start" skal være en .html-fil i spillets mappe`);
+  if (erLink) {
+    const f = linkFejl(data.url);
+    if (f) fejl.push(f);
+    if (data.start !== undefined) fejl.push(`Brug enten "start" (et spil i mappen) eller "url" (et projekt et andet sted), ikke begge`);
+    if (data.cover === undefined) fejl.push(`Et linkkort skal have et "cover", fx "cover.png"`);
+  } else if (!startFil || !/\.html?$/i.test(start)) fejl.push(`"start" skal være en .html-fil i spillets mappe`);
   else if (!fs.existsSync(startFil)) fejl.push(`Spillet starter i games/${slug}/${start}, men filen findes ikke`);
   else {
     const html = fs.readFileSync(startFil, "utf8");
@@ -157,7 +180,8 @@ function manifestPost(slug, data) {
     type: data.type || null,
     tags: Array.isArray(data.tags) ? data.tags : [],
     cover: data.cover ? `games/${slug}/${data.cover}` : null,
-    start: `games/${slug}/${data.start || "index.html"}`,
+    start: data.url ? null : `games/${slug}/${data.start || "index.html"}`,
+    url: data.url || null,
     styring: data.styring || "",
     dato: data.dato || null,
   };
@@ -238,4 +262,4 @@ function maaOpdatere(slug, { gren, fraFork }) {
   return !fraFork && gren === `indsend/${slug}`;
 }
 
-module.exports = { ROD, GAMES, SLUG, spilmapper, tjekSpil, bygManifest, manifestFiler, skrivManifest, testfiler, spilIPr, maaOpdatere };
+module.exports = { ROD, GAMES, SLUG, linkFejl, spilmapper, tjekSpil, bygManifest, manifestFiler, skrivManifest, testfiler, spilIPr, maaOpdatere };

@@ -7,6 +7,9 @@
 //     aldrig automatisk: et spil er JavaScript på vores side, og et statisk
 //     tjek kan snydes, så en maintainer godkender spil udefra i hånden.
 //   - spillets game.json slettes ikke
+//   - spillet er ikke et linkkort ("url" i game.json). Et linkkort peger på en
+//     side et andet sted, som kan ændre sig efter tjekket, så en maintainer
+//     godkender det altid i hånden.
 //   - PR'en er ikke en kladde, går mod main, og hovedet er det, tjekket kørte på
 // Alt andet (fx en ændring af hallen) venter på en maintainer.
 //
@@ -16,7 +19,7 @@ const fs = require("node:fs");
 const { SLUG, spilIPr, maaOpdatere } = require("./arkaden.js");
 
 // Ren beslutning, så den kan testes uden GitHub. filer: [{ filename, status, previous_filename }].
-function vurder({ pr, filer, findesPaaMain, repo }) {
+function vurder({ pr, filer, findesPaaMain, repo, erLink = false }) {
   if (pr.draft) return { flet: false, grund: "PR'en er en kladde" };
   if (pr.base.ref !== "main") return { flet: false, grund: `PR'en går mod ${pr.base.ref}, ikke main` };
   const stier = filer.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean));
@@ -29,6 +32,7 @@ function vurder({ pr, filer, findesPaaMain, repo }) {
   if (filer.some((f) => f.filename === `games/${slug}/game.json` && f.status === "removed")) {
     return { flet: false, grund: `games/${slug} slettes. Det kræver en maintainer` };
   }
+  if (erLink) return { flet: false, grund: `games/${slug} er et linkkort. En maintainer godkender links i hånden` };
   const fraFork = !pr.head.repo || pr.head.repo.full_name !== repo;
   if (fraFork) return { flet: false, grund: "PR'en kommer fra en fork. En maintainer godkender spil udefra i hånden" };
   if (pr.head.ref !== `indsend/${slug}`) {
@@ -80,7 +84,18 @@ async function main() {
   const { slugs } = spilIPr(filer.map((f) => f.filename));
   const findesPaaMain = slugs.length === 1 && (await gh(`/repos/${repo}/contents/games/${encodeURIComponent(slugs[0])}/game.json?ref=main`)) !== null;
 
-  const v = vurder({ pr, filer, findesPaaMain, repo });
+  // Læs game.json fra PR'ens hoved: et linkkort merges aldrig af sig selv.
+  let erLink = false;
+  if (slugs.length === 1) {
+    const json = await gh(`/repos/${repo}/contents/games/${encodeURIComponent(slugs[0])}/game.json?ref=${sha}`);
+    try {
+      erLink = json !== null && JSON.parse(Buffer.from(json.content || "", "base64").toString("utf8")).url !== undefined;
+    } catch {
+      erLink = true; // kan game.json ikke læses, venter PR'en på en maintainer
+    }
+  }
+
+  const v = vurder({ pr, filer, findesPaaMain, repo, erLink });
   console.log(`PR #${pr.number}: ${v.flet ? "merges" : "merges ikke"} (${v.grund}).`);
   if (!v.flet) return;
 

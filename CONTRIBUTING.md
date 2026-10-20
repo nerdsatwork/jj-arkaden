@@ -59,6 +59,12 @@ Kør det selv først: `npm run tjek-pr`.
 
 Er tjekket grønt, og kommer pull requesten fra Arkaden-værktøjet (branchen `indsend/<dit-spil>` i Arkaden selv), merger robotten (`.github/workflows/auto-merge.yml`) den med squash, bygger spillisten og lægger spilhallen på GitHub Pages. En pull request fra en fork merger robotten aldrig: den venter på en maintainer. Robotten merger heller aldrig noget uden for `games/`.
 
+## Er dit projekt for stort? Lav et linkkort
+
+Et stort projekt (fx en Next.js-app med server) kan ikke ligge i Arkaden. Læg det et andet sted, fx på Vercel, og lav et linkkort: en mappe `games/<dit-projekt>/` med kun `game.json` og et cover. I `game.json` skriver du `"url": "https://dit-projekt.vercel.app"` i stedet for `"start"`. Hallen viser kortet og åbner adressen i en ny fane.
+
+Adressen skal starte med `https://` og må ikke indeholde login. Et linkkort merger robotten aldrig: siden bag adressen kan ændre sig efter tjekket, så Jonas godkender det i hånden.
+
 ## Husregler
 
 - Ét spil pr. pull request, og kun i dit spils egen mappe.

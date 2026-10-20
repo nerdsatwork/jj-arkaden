@@ -75,6 +75,7 @@ if (!gren) {
 const fraFork = process.env.FRA_FORK === "true";
 
 let fejl = 0;
+let linkkort = false;
 for (const f of udenfor) {
   fejl++;
   if (f.startsWith("games/manifest")) sig(`✗ ${f} laves af robotten. Fjern den fra din PR.`);
@@ -103,6 +104,7 @@ for (const slug of slugs) {
     continue;
   }
   const r = tjekSpil(slug);
+  if (r.data && r.data.url !== undefined) linkkort = true;
   for (const f of r.fejl) {
     fejl++;
     sig(`✗ games/${slug}: ${f}`);
@@ -122,5 +124,8 @@ if (fejl === 0 && slugs.length === 1 && fs.existsSync(`${ROD}/games/${slugs[0]}`
   }
 }
 
-sig(fejl === 0 ? `✓ Klar: games/${slugs.join(", ")}. På GitHub merges PR'en nu af sig selv.` : `✗ ${fejl} problem(er). Ret dem, og push igen.`);
+const klar = linkkort
+  ? `✓ Klar: games/${slugs.join(", ")} er et linkkort. Jonas godkender links i hånden, så PR'en venter på ham.`
+  : `✓ Klar: games/${slugs.join(", ")}. På GitHub merges PR'en nu af sig selv.`;
+sig(fejl === 0 ? klar : `✗ ${fejl} problem(er). Ret dem, og push igen.`);
 slut(fejl ? 1 : 0);
