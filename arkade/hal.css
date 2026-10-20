@@ -58,6 +58,15 @@ body.spiller {
   overflow: hidden;
 }
 
+/* Når spillet har taget over, tegnes hallen bag det slet ikke. Så bruger
+   lamperne, sløret i topbaren og kortene ingen kraft, mens man spiller. */
+body.skjul-hal > .top,
+body.skjul-hal > main,
+body.skjul-hal > .fod {
+  visibility: hidden;
+  content-visibility: hidden;
+}
+
 a {
   color: inherit;
 }
@@ -1617,20 +1626,19 @@ kbd {
 }
 
 .scene-ramme {
-  display: grid;
-  place-items: center;
+  position: relative;
   min-height: 0;
-  padding: 18px;
 }
 
+/* Spillet fylder hele scenen under topbaren, så flyveturen lander præcis på det. */
 .scene iframe {
-  width: min(100%, calc((100vh - 100px) * 1.6));
-  aspect-ratio: 8 / 5;
-  height: auto;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border: 0;
-  border-radius: 14px;
+  display: block;
   background: var(--blaek);
-  box-shadow: 0 0 0 1px var(--streg), 0 40px 120px -30px rgb(0 0 0 / 0.9);
 }
 
 .flyv {

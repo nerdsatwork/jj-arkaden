@@ -587,15 +587,16 @@
       return;
     }
     const { rect, kilde } = fra;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    // Spejlet lander præcis på spillets ramme, som fylder skærmen under topbaren.
+    // Så ser man ingen beskæring, når spillet tager over.
+    const maal = sceneRamme.getBoundingClientRect();
     const spejl = el("div", { class: "flyv", "aria-hidden": "true", style: `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px` }, kilde.cloneNode(true));
     document.body.append(spejl);
-    const slut = `translate(${-rect.left}px, ${-rect.top}px) scale(${vw / rect.width}, ${vh / rect.height})`;
+    const slut = `translate(${maal.left - rect.left}px, ${maal.top - rect.top}px) scale(${maal.width / rect.width}, ${maal.height / rect.height})`;
     spejl.animate([{ transform: "none" }, { transform: slut }], { duration: 560, easing: "cubic-bezier(0.7, 0, 0.2, 1)", fill: "forwards" });
-    spejl.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: 860, fill: "forwards" }).finished.then(() => spejl.remove(), () => spejl.remove());
-    scene.animate([{ opacity: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1 }], { duration: 760, easing: "ease-out" });
-    sceneRamme.animate([{ transform: "scale(1, 0.01)", opacity: 0 }, { transform: "scale(1, 0.01)", opacity: 0, offset: 0.6 }, { transform: "scale(1, 1.02)", opacity: 1, offset: 0.85 }, { transform: "none", opacity: 1 }], { duration: 1000, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
+    spejl.animate([{ opacity: 1 }, { opacity: 1, offset: 0.65 }, { opacity: 0 }], { duration: 860, fill: "forwards" }).finished.then(() => spejl.remove(), () => spejl.remove());
+    scene.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 420, easing: "ease-out" });
+    sceneRamme.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], { duration: 860, easing: "ease-out" });
   }
 
   function startSpil(slug) {
@@ -618,13 +619,17 @@
     document.body.classList.add("spiller");
     spillerNu = { slug, iframe };
     flyvOp();
+    // Gem hallen væk, når flyveturen er landet, så kun spillet bruger kraft.
+    setTimeout(() => {
+      if (spillerNu && spillerNu.iframe === iframe) document.body.classList.add("skjul-hal");
+    }, stille() ? 0 : 900);
   }
 
   function stopSpil() {
     if (!spillerNu) return;
     sceneRamme.replaceChildren();
     scene.hidden = true;
-    document.body.classList.remove("spiller");
+    document.body.classList.remove("spiller", "skjul-hal");
     spillerNu = null;
   }
 
