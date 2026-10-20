@@ -587,16 +587,19 @@
       return;
     }
     const { rect, kilde } = fra;
-    // Spejlet lander præcis på spillets ramme, som fylder skærmen under topbaren.
-    // Så ser man ingen beskæring, når spillet tager over.
+    // Selve spillet flyver: rammen med det kørende spil har allerede sin endelige
+    // størrelse og skaleres op fra coveret. Coverets spejlbillede flyver med og
+    // toner ud undervejs. Så er det spillets egen skærm, der lander, og intet
+    // skifter størrelse eller beskæres bagefter.
     const maal = sceneRamme.getBoundingClientRect();
-    const spejl = el("div", { class: "flyv", "aria-hidden": "true", style: `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px` }, kilde.cloneNode(true));
+    const spejl = el("div", { class: "flyv", "aria-hidden": "true", style: `left:${maal.left}px;top:${maal.top}px;width:${maal.width}px;height:${maal.height}px` }, kilde.cloneNode(true));
     document.body.append(spejl);
-    const slut = `translate(${maal.left - rect.left}px, ${maal.top - rect.top}px) scale(${maal.width / rect.width}, ${maal.height / rect.height})`;
-    spejl.animate([{ transform: "none" }, { transform: slut }], { duration: 560, easing: "cubic-bezier(0.7, 0, 0.2, 1)", fill: "forwards" });
-    spejl.animate([{ opacity: 1 }, { opacity: 1, offset: 0.65 }, { opacity: 0 }], { duration: 860, fill: "forwards" }).finished.then(() => spejl.remove(), () => spejl.remove());
+    const fraCover = `translate(${rect.left - maal.left}px, ${rect.top - maal.top}px) scale(${rect.width / maal.width}, ${rect.height / maal.height})`;
+    const tur = { duration: 620, easing: "cubic-bezier(0.7, 0, 0.2, 1)" };
+    spejl.animate([{ transform: fraCover }, { transform: "none" }], { ...tur, fill: "forwards" });
+    spejl.animate([{ opacity: 1 }, { opacity: 1, offset: 0.35 }, { opacity: 0, offset: 0.8 }, { opacity: 0 }], { duration: 620, fill: "forwards" }).finished.then(() => spejl.remove(), () => spejl.remove());
+    sceneRamme.animate([{ transform: fraCover }, { transform: "none" }], tur);
     scene.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 420, easing: "ease-out" });
-    sceneRamme.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], { duration: 860, easing: "ease-out" });
   }
 
   function startSpil(slug) {
