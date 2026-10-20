@@ -1620,29 +1620,24 @@ kbd {
   color: var(--graa);
 }
 
-.scene-ramme {
-  position: relative;
-  min-height: 0;
-  overflow: hidden;
-  transform-origin: 0 0;
-}
+.scene-ramme { display: grid; place-items: center; min-height: 0; padding: 18px; }
 
-/* Spillet fylder hele scenen under topbaren, så flyveturen lander præcis på det. */
 .scene iframe {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  width: min(100%, calc((100vh - 100px) * 1.6));
+  aspect-ratio: 8 / 5;
+  height: auto;
   border: 0;
-  display: block;
+  border-radius: 14px;
   background: var(--blaek);
+  box-shadow: 0 0 0 1px var(--streg), 0 40px 120px -30px rgb(0 0 0 / 0.9);
+  transform-origin: 0 0;
 }
 
 .flyv {
   position: fixed;
   z-index: 60;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: 14px;
   transform-origin: 0 0;
   pointer-events: none;
 }
