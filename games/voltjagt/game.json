@@ -1,0 +1,10 @@
+{
+  "titel": "Voltjagt 2037",
+  "beskrivelse": "Du er agent fra Salesforce med en stjålet datakerne. Kør og flyv en 2037-roadster forbi Claude-, ChatGPT- og Google-agenter til HQ.",
+  "type": "action",
+  "tags": ["3d", "racer", "flyvende biler", "ai-agenter", "historie"],
+  "dato": "2026-11-02",
+  "cover": "cover.svg",
+  "start": "index.html",
+  "forfatter": "JD"
+}

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voltjagt 2037</title>
+<style>
+/* Layout: one full-screen arcade cabinet. The 3D road fills it, the HUD hugs the corners, story screens float in the middle. */
+:root {
+--night:#14061F; --plum:#2A0E3D; --orange:#FF8A1F; --lilac:#F7E9FF; --lime:#B8FF3D; --alert:#FF4D6D;
+--claude:#FF7A93; --gpt:#3DE0C8; --google:#8C9BFF;
+--dim:color-mix(in srgb, var(--lilac) 58%, var(--plum));
+--panel:color-mix(in srgb, var(--night) 80%, transparent);
+--edge:color-mix(in srgb, var(--orange) 42%, var(--plum));
+--f-display:"Courier New", ui-monospace, monospace;
+--f-ui:"Trebuchet MS", system-ui, sans-serif;
+--f-num:"Courier New", ui-monospace, monospace;
+--side-l:max(16px, env(safe-area-inset-left, 0px));
+--side-r:max(16px, env(safe-area-inset-right, 0px));
+color-scheme:dark;
+}
+html, body { height:100%; background:var(--night); color:var(--lilac); }
+[hidden] { display:none !important; }
+body { margin:0; overflow:hidden; font-family:var(--f-ui); padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+#app { position:fixed; inset:0; overflow:hidden; background:var(--night); touch-action:none; user-select:none; -webkit-user-select:none; }
+#view { position:absolute; inset:0; width:100%; height:100%; display:block; image-rendering:pixelated; }
+.scan { position:absolute; inset:0; z-index:6; pointer-events:none; background:repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.16) 2px 4px); box-shadow:inset 0 0 24vmin rgba(0,0,0,.5); }
+
+/* floating name tags over the agents */
+#tags { position:absolute; inset:0; z-index:4; pointer-events:none; }
+.tag { position:absolute; left:0; top:0; font:700 11px/1 var(--f-display); letter-spacing:.06em; padding:3px 6px 4px; background:var(--night); border:2px solid currentColor; white-space:nowrap; will-change:transform; }
+.tag.claude { color:var(--claude); } .tag.gpt { color:var(--gpt); } .tag.google { color:var(--google); } .tag.taxi { color:var(--dim); border-width:1px; }
+.tag .act { display:block; font:600 10px/1.2 var(--f-ui); letter-spacing:.1em; color:var(--lilac); margin-top:2px; }
+
+/* HUD */
+#hud { position:absolute; inset:0; z-index:8; pointer-events:none; padding:calc(env(safe-area-inset-top, 0px) + 12px) var(--side-r) calc(env(safe-area-inset-bottom, 0px) + 14px) var(--side-l); display:flex; flex-direction:column; justify-content:space-between; }
+.hud-top { display:flex; align-items:flex-start; gap:14px; }
+.panel { position:relative; padding:9px 14px 10px; background:var(--panel); border:2px solid var(--edge); display:flex; flex-direction:column; gap:3px; min-width:0; }
+.panel::before, .panel::after { content:""; position:absolute; width:12px; height:12px; border:4px solid var(--orange); }
+.panel::before { left:-5px; top:-5px; border-right:0; border-bottom:0; }
+.panel::after { right:-5px; bottom:-5px; border-left:0; border-top:0; }
+.lab { font:600 11px/1.25 var(--f-ui); letter-spacing:.16em; text-transform:uppercase; color:var(--dim); }
+.num { font:400 40px/.85 var(--f-num); color:var(--lilac); font-variant-numeric:tabular-nums; letter-spacing:.04em; }
+.num.small { font-size:24px; color:var(--lilac); }
+.progress { flex:1; align-self:center; position:relative; height:10px; border:2px solid var(--edge); background:var(--panel); margin-top:6px; }
+.progress i { position:absolute; left:0; top:0; bottom:0; width:0; background:var(--orange); }
+.progress span { position:absolute; right:-2px; top:14px; font:700 11px var(--f-display); color:var(--lime); }
+.progress b { position:absolute; top:14px; font:600 10px var(--f-ui); letter-spacing:.12em; color:var(--dim); transform:translateX(-50%); }
+.right { align-items:flex-end; text-align:right; }
+.shields { display:flex; gap:6px; padding:3px 0 2px; }
+.shields i { width:22px; height:24px; background:var(--orange); clip-path:polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+.shields i.off { background:color-mix(in srgb, var(--lilac) 18%, var(--plum)); }
+.hud-bottom { display:flex; align-items:flex-end; justify-content:space-between; gap:14px; }
+.comms { max-width:min(420px, 60vw); }
+.comms p { margin:0; font:600 15px/1.35 var(--f-ui); color:var(--lilac); text-wrap:pretty; }
+.comms .who { color:var(--lime); }
+.meters { display:flex; gap:12px; }
+.meter { width:170px; }
+.bar { height:12px; border:2px solid var(--edge); background:var(--night); position:relative; overflow:hidden; }
+.bar i { position:absolute; inset:0 auto 0 0; width:0; background:var(--orange); }
+.meter.emp .bar i { background:var(--lime); }
+.meter .ready { font:700 11px var(--f-display); color:var(--dim); }
+.meter.full .ready { color:var(--lime); animation:pulse 1.3s ease-in-out infinite; }
+kbd { font:700 10px var(--f-display); border:1px solid var(--dim); padding:1px 4px; color:var(--lilac); letter-spacing:0; }
+
+/* touch controls */
+#touch { position:absolute; left:0; right:0; bottom:0; z-index:9; display:none; justify-content:space-between; padding:0 var(--side-r) calc(env(safe-area-inset-bottom, 0px) + 92px) var(--side-l); pointer-events:none; }
+#touch div { display:flex; gap:10px; }
+#touch button { pointer-events:auto; width:68px; height:68px; font:700 15px var(--f-display); color:var(--lilac); background:var(--panel); border:2px solid var(--edge); touch-action:none; }
+#touch button.go { color:var(--night); background:var(--orange); border-color:var(--orange); }
+#touch button.zap { color:var(--night); background:var(--lime); border-color:var(--lime); }
+@media (pointer:coarse) { #touch.on { display:flex; } }
+
+/* big centre calls */
+.call { position:absolute; left:50%; top:38%; z-index:7; transform:translate(-50%,-50%); pointer-events:none; font:700 clamp(40px, 9vw, 110px)/1 var(--f-display); color:var(--orange); text-shadow:6px 6px 0 color-mix(in srgb, var(--orange) 30%, var(--night)); white-space:nowrap; opacity:0; }
+.call.show { animation:call 1.3s ease-out forwards; }
+.call.lime { color:var(--lime); text-shadow:6px 6px 0 color-mix(in srgb, var(--lime) 25%, var(--night)); }
+@keyframes call { 0% { opacity:0; transform:translate(-50%,-50%) scale(1.6); } 15% { opacity:1; transform:translate(-50%,-50%) scale(.96); } 25% { transform:translate(-50%,-50%) scale(1); } 75% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-62%) scale(1); } }
+@keyframes pulse { 50% { opacity:.45; } }
+
+/* screens */
+.screen { position:absolute; inset:0; z-index:20; display:grid; place-items:center; padding:calc(env(safe-area-inset-top, 0px) + 16px) var(--side-r) calc(env(safe-area-inset-bottom, 0px) + 16px) var(--side-l); background:color-mix(in srgb, var(--night) 30%, transparent); overflow:auto; }
+.card { position:relative; width:min(660px, 100%); box-sizing:border-box; padding:26px 26px 22px; background:var(--panel); border:2px solid var(--edge); display:flex; flex-direction:column; gap:14px; }
+.card::before, .card::after { content:""; position:absolute; width:18px; height:18px; border:6px solid var(--orange); }
+.card::before { left:-7px; top:-7px; border-right:0; border-bottom:0; }
+.card::after { right:-7px; bottom:-7px; border-left:0; border-top:0; }
+.kicker { margin:0; font:700 12px var(--f-display); letter-spacing:.08em; color:var(--lime); }
+.logo { margin:0; font:700 clamp(44px, 12vw, 112px)/.92 var(--f-display); color:var(--orange); text-shadow:6px 6px 0 color-mix(in srgb, var(--orange) 32%, var(--plum)); text-wrap:balance; }
+.logo span { display:block; margin-top:12px; font:700 clamp(20px, 5vw, 40px)/1 var(--f-ui); letter-spacing:.55em; color:var(--lilac); text-shadow:none; }
+.pitch { margin:0; font:600 17px/1.45 var(--f-ui); max-width:58ch; text-wrap:pretty; }
+.fine { margin:0; font:400 12px/1.4 var(--f-ui); color:var(--dim); }
+.actions { display:flex; flex-wrap:wrap; gap:10px; }
+.btn { font:700 15px var(--f-ui); letter-spacing:.12em; text-transform:uppercase; padding:12px 18px; border:2px solid var(--lilac); background:transparent; color:var(--lilac); cursor:pointer; }
+.btn.primary { background:var(--lime); color:var(--night); border-color:var(--lime); }
+.btn.ghost { border-color:transparent; color:var(--dim); }
+.btn:hover { filter:brightness(1.12); }
+.btn:focus-visible, #touch button:focus-visible, .mute:focus-visible { outline:3px solid var(--lime); outline-offset:3px; }
+.keys { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:8px 16px; font:600 14px/1.4 var(--f-ui); }
+.keys b { color:var(--orange); font-weight:700; }
+.brief .type { margin:0; min-height:7.5em; font:600 clamp(17px, 2.6vw, 21px)/1.5 var(--f-ui); text-wrap:pretty; }
+.brief .type em { font-style:normal; color:var(--orange); }
+.score-line { font:400 56px/.9 var(--f-num); color:var(--lime); margin:0; }
+.zonecard { position:absolute; left:50%; top:24%; z-index:7; transform:translateX(-50%); text-align:center; pointer-events:none; width:min(560px, 92vw); }
+.zonecard h2 { margin:6px 0 8px; font:700 clamp(28px, 6vw, 56px)/1 var(--f-display); color:var(--lilac); text-shadow:4px 4px 0 var(--plum); }
+.zonecard p { margin:0; font:600 16px/1.4 var(--f-ui); color:var(--lilac); text-shadow:0 2px 0 var(--night); }
+.mute { position:absolute; z-index:30; top:calc(env(safe-area-inset-top, 0px) + 12px); right:var(--side-r); font:700 11px var(--f-display); color:var(--lilac); background:var(--panel); border:2px solid var(--edge); padding:6px 8px; cursor:pointer; }
+#hud:not([hidden]) ~ .mute { top:auto; bottom:calc(env(safe-area-inset-bottom, 0px) + 14px); }
+.hit { position:absolute; inset:0; z-index:5; pointer-events:none; box-shadow:inset 0 0 18vmin var(--alert); opacity:0; transition:opacity .35s; }
+.hit.on { opacity:.8; transition:none; }
+
+@media (max-width:640px) {
+.num { font-size:30px; } .meter { width:118px; } .comms { display:none; } .progress { display:none; }
+.panel { padding:7px 10px 8px; } .shields i { width:17px; height:19px; }
+.zonecard { top:20%; }
+}
+@media (prefers-reduced-motion:reduce) { .call.show { animation-duration:2s; } .meter.full .ready { animation:none; } }
+</style>
+</head>
+<body>
+<div id="app">
+<canvas id="view" aria-label="Motorvejen i Voltjagt 2037"></canvas>
+<div id="tags" aria-hidden="true"></div>
+<div class="hit" id="hitfx"></div>
+<div class="scan"></div>
+<div class="call" id="call" aria-live="polite"></div>
+<div id="hud" hidden>
+<div class="hud-top">
+<section class="panel">
+<span class="lab">Point</span>
+<b class="num" id="score">000000</b>
+<span class="lab" id="zone-lab">Zone 1/3</span>
+</section>
+<div class="progress" aria-hidden="true"><i id="prog"></i><b style="left:33.3%">Bro</b><b style="left:66.6%">Data</b><span>HQ</span></div>
+<section class="panel right">
+<span class="lab">Skjold</span>
+<span class="shields" id="shields"><i></i><i></i><i></i><i></i><i></i></span>
+<span class="lab">Fart <b class="num small" id="speed">000</b> km/t</span>
+</section>
+</div>
+<div class="zonecard" id="zonecard" hidden><p class="kicker" id="zone-k">Zone 1 af 3</p><h2 id="zone-name">Motorvej E20</h2><p id="zone-tip"></p></div>
+<div class="hud-bottom">
+<section class="panel comms" id="comms" hidden><span class="lab who">Kopilot</span><p id="comms-text"></p></section>
+<div class="meters">
+<section class="panel meter" id="m-fly"><span class="lab">Flyv <kbd>Mellemrum</kbd></span><div class="bar"><i></i></div><span class="ready">Lader</span></section>
+<section class="panel meter emp" id="m-emp"><span class="lab">EMP <kbd>E</kbd></span><div class="bar"><i></i></div><span class="ready">Lader</span></section>
+</div>
+</div>
+</div>
+<div id="touch">
+<div><button id="t-left" aria-label="Skift bane til venstre">&lt;</button><button id="t-right" aria-label="Skift bane til højre">&gt;</button></div>
+<div><button id="t-fly" class="go" aria-label="Flyv">Flyv</button><button id="t-emp" class="zap" aria-label="EMP-chok">EMP</button></div>
+</div>
+<div class="screen" id="s-title">
+<div class="card">
+<p class="kicker">Et arkadespil fra år 2037</p>
+<h1 class="logo">VOLTJAGT<span>2037</span></h1>
+<p class="pitch">Du er agent fra Salesforce og har stjålet en datakerne. Claude-, ChatGPT- og Google-agenterne vil have den tilbage og prøver at stoppe dig på vejen. Kør, flyv og nå frem til HQ-tårnet.</p>
+<div class="actions"><button class="btn primary" id="b-start">Start mission</button><button class="btn" id="b-how" aria-expanded="false" aria-controls="how">Sådan spiller du</button></div>
+<ul class="keys" id="how" hidden>
+<li><b>← →</b> eller <b>A D</b>: skift bane</li>
+<li><b>Mellemrum</b>: flyv, når Flyv-måleren er fuld</li>
+<li><b>E</b>: EMP-chok, der rydder vejen</li>
+<li><b>P</b>: pause · <b>M</b>: lyd</li>
+<li>Mobil: knapperne nederst eller swipe til siden</li>
+<li>Saml <b>grønne celler</b> for at lade op</li>
+</ul>
+<p class="fine">Fiktivt fan-spil. Ingen tilknytning til Salesforce, Anthropic, OpenAI eller Google.</p>
+</div>
+</div>
+<div class="screen" id="s-brief" hidden>
+<div class="card brief">
+<p class="kicker" id="brief-step">Briefing 1/4</p>
+<p class="type" id="brief-text"></p>
+<div class="actions"><button class="btn primary" id="b-next">Videre</button><button class="btn ghost" id="b-skip">Spring over</button></div>
+</div>
+</div>
+<div class="screen" id="s-over" hidden>
+<div class="card">
+<p class="kicker" style="color:var(--alert)">Agent nede</p>
+<h2 class="logo" style="font-size:clamp(34px, 8vw, 72px)">Datakernen er tabt</h2>
+<p class="pitch" id="over-text">Agenterne fik ram på dig.</p>
+<div class="actions"><button class="btn primary" id="b-retry">Fortsæt fra zonen</button><button class="btn" id="b-restart">Start forfra</button></div>
+</div>
+</div>
+<div class="screen" id="s-win" hidden>
+<div class="card">
+<p class="kicker">Mission fuldført</p>
+<h2 class="logo" style="font-size:clamp(34px, 8vw, 72px)">Kernen er i sikkerhed</h2>
+<p class="score-line" id="win-score">000000</p>
+<p class="pitch" id="win-text"></p>
+<div class="actions"><button class="btn primary" id="b-again">Spil igen</button></div>
+</div>
+</div>
+<div class="screen" id="s-pause" hidden>
+<div class="card"><p class="kicker">Pause</p><p class="pitch">Agenterne venter. Det gør vejen også.</p><div class="actions"><button class="btn primary" id="b-resume">Fortsæt</button></div></div>
+</div>
+<button class="mute" id="b-mute" aria-pressed="false">Lyd: til</button>
+</div>
+<script src="engine.js"></script>
+<script src="audio.js"></script>
+<script src="world.js"></script>
+<script src="models.js"></script>
+<script src="ui.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
