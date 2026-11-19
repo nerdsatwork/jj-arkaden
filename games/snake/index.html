@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snake</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Snake</h1>
+      <p class="tal">Point: <span id="point">0</span></p>
+    </header>
+    <p class="level">Level <span id="level"></span></p>
+
+    <div class="bane-boks">
+      <canvas id="bane" width="400" height="400" aria-label="Spillepladen"></canvas>
+      <div id="besked" class="besked" hidden>
+        <h2 id="besked-titel"></h2>
+        <p id="besked-tekst"></p>
+        <button id="knap" type="button"></button>
+      </div>
+    </div>
+
+    <section class="highscore">
+      <h2>Highscore</h2>
+      <ol id="highscore"></ol>
+    </section>
+
+    <p class="hjaelp">Styr slangen med piletasterne, eller swipe på banen. Mellemrum, P eller et tryk på banen sætter spillet på pause.</p>
+  </main>
+
+  <script src="levels.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

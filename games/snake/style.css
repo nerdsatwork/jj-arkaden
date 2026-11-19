@@ -1,0 +1,156 @@
+/* Farverne fra design.md, samlet ét sted */
+:root {
+  --baggrund: #faf9f5;
+  --flade: #ffffff;
+  --tekst: #1f1e1d;
+  --daempet: #6b6862;
+  --kant: #e3e0d8;
+  --accent: #d4572a;
+  --blad: #5a7d3a;
+
+  --skrift-overskrift: Georgia, "Times New Roman", serif;
+  --skrift-tekst: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --skrift-tal: ui-monospace, Menlo, Consolas, monospace;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--baggrund);
+  color: var(--tekst);
+  font-family: var(--skrift-tekst);
+  font-size: 1rem;
+}
+
+main {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--skrift-overskrift);
+  font-size: 2rem;
+  font-weight: normal;
+}
+
+.tal {
+  margin: 0;
+  color: var(--daempet);
+}
+
+.tal span {
+  color: var(--accent);
+  font-family: var(--skrift-tal);
+  font-size: 1.25rem;
+}
+
+.level {
+  margin: 0 0 16px;
+  color: var(--daempet);
+  font-size: 0.875rem;
+}
+
+.bane-boks {
+  position: relative;
+  padding: 8px;
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+  background: var(--flade);
+  box-shadow: 0 8px 24px rgba(31, 30, 29, 0.08);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none; /* swipe styrer slangen i stedet for at scrolle siden */
+}
+
+.besked {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--flade) 88%, transparent);
+  text-align: center;
+}
+
+.besked[hidden] {
+  display: none;
+}
+
+.besked h2 {
+  margin: 0;
+  font-family: var(--skrift-overskrift);
+  font-weight: normal;
+}
+
+.besked p {
+  margin: 0 0 8px;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--flade);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.highscore {
+  margin-top: 24px;
+}
+
+.highscore h2 {
+  margin: 0 0 8px;
+  font-family: var(--skrift-overskrift);
+  font-size: 1.25rem;
+  font-weight: normal;
+}
+
+.highscore ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--kant);
+}
+
+.highscore li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--kant);
+}
+
+.highscore li span:first-child {
+  font-family: var(--skrift-tal);
+}
+
+.highscore li span:last-child,
+.highscore .tom {
+  color: var(--daempet);
+  font-size: 0.875rem;
+}
+
+.hjaelp {
+  margin: 16px 0 0;
+  color: var(--daempet);
+  font-size: 0.875rem;
+}

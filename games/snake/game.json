@@ -1,0 +1,9 @@
+{
+  "titel": "Snake",
+  "beskrivelse": "Klassisk Snake med fem baner, der bliver hurtigere og trangere. Slangen vokser og beholder længden. Styr med piletaster eller swipe.",
+  "type": "klassiker",
+  "tags": ["snake", "slange", "klassiker", "retro"],
+  "dato": "2026-11-19",
+  "cover": "cover.svg",
+  "start": "index.html"
+}
