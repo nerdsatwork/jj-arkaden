@@ -1,0 +1,9 @@
+{
+  "titel": "Mini Golf Slag",
+  "beskrivelse": "Top-down golf over 9 huller (par 36) med 14 køller, skiftende vind, søer, bunkere og træer. Sigt, lad kraften op og slå.",
+  "type": "rolig",
+  "tags": ["golf", "sport", "vind", "tastatur"],
+  "dato": "2026-11-19",
+  "start": "index.html",
+  "cover": "cover.svg"
+}
