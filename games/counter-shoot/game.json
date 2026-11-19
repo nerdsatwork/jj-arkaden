@@ -1,0 +1,10 @@
+{
+  "titel": "Counter Shoot",
+  "beskrivelse": "First person skydespil i browseren. Stop terroristerne på tre baner (Ørkenby, Atomkraftværk og Inferno), før de sprænger bomben.",
+  "type": "action",
+  "tags": ["fps", "skydespil", "first-person", "3d"],
+  "dato": "2026-11-19",
+  "forfatter": "8ORUP Games",
+  "start": "index.html",
+  "cover": "cover.svg"
+}
