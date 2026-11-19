@@ -1,0 +1,10 @@
+{
+  "titel": "Paraglider ved skrænten",
+  "beskrivelse": "Styr en paraglider med piletasterne, og hold dig i luften med opdrift ved skrænten og termik. Pas på vindskift og fugle.",
+  "type": "rolig",
+  "tags": ["paraglider", "flyvning", "vind", "tastatur"],
+  "dato": "2026-11-19",
+  "start": "index.html",
+  "cover": "cover.svg",
+  "forfatter": "8ORUP Games"
+}
