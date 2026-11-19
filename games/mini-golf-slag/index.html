@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini Golf Slag</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    background: #e4efd9; color: #1f3320; font-family: "Segoe UI", system-ui, sans-serif;
+  }
+  #wrap { position: relative; }
+  canvas { display: block; border-radius: 10px; box-shadow: 0 10px 30px rgba(40,70,40,.25); max-width: 100vw; }
+  #hud { display: flex; gap: 24px; font-size: 18px; font-weight: 600; }
+  #help { font-size: 14px; opacity: .8; }
+  #powerRow { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; font-weight: 600; font-size: 14px; }
+  #lie { min-width: 110px; text-align: right; }
+  #powerPct { min-width: 40px; }
+  #windToggle { display: flex; align-items: center; gap: 6px; font-weight: 500; cursor: pointer; user-select: none; }
+  #windToggle input { width: 16px; height: 16px; accent-color: #7fcf62; cursor: pointer; }
+  #powerBar { width: min(360px, 60vw); height: 18px; background: #fff; border: 2px solid #1f3320; border-radius: 5px; overflow: hidden; }
+  #powerFill { height: 100%; width: 0; background: linear-gradient(90deg, #4caf50, #ffeb3b 60%, #f44336); background-size: min(360px, 60vw) 100%; }
+  #clubs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+  #clubs button { font: 600 14px "Segoe UI", system-ui, sans-serif; color: #1f3320; background: #fff; border: 2px solid #9fbf8f; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #clubs { align-items: center; }
+  #clubs button { min-width: 36px; padding: 4px 6px; }
+  #clubs .gap { width: 8px; }
+  #clubName { min-width: 230px; margin-left: 8px; font-weight: 600; font-size: 14px; }
+  #clubs button.valgt { background: #1f3320; color: #f2f5ea; border-color: #1f3320; }
+  #clubs button:disabled { cursor: default; opacity: .55; }
+  #clubs button.valgt:disabled { opacity: 1; }
+  #weatherRow { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  #weatherRow input { font: 500 14px "Segoe UI", system-ui, sans-serif; padding: 4px 8px; border: 2px solid #9fbf8f; border-radius: 6px; width: 170px; color: #1f3320; }
+  #weatherRow button { font: 600 13px "Segoe UI", system-ui, sans-serif; color: #1f3320; background: #fff; border: 2px solid #9fbf8f; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #weatherStatus { font-weight: 500; opacity: .8; }
+  .smallBtn { font: 600 13px "Segoe UI", system-ui, sans-serif; color: #1f3320; background: #fff; border: 2px solid #9fbf8f; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .smallBtn.slukket { background: #f3e3e0; border-color: #c9a39b; }
+  kbd { background: #1f3320; color: #f2f5ea; border-radius: 4px; padding: 1px 6px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <span id="holeInfo">Hul 1</span>
+  <span id="strokeInfo">Slag: 0</span>
+  <span id="totalInfo">Total: 0</span>
+  <span id="recordInfo"></span>
+</div>
+<div id="wrap"><canvas id="c" width="960" height="600"></canvas></div>
+<div id="powerRow">
+  <span id="lie">Fairway</span>
+  <div id="powerBar"><div id="powerFill"></div></div>
+  <span id="powerPct">0%</span>
+  <label id="windToggle"><input type="checkbox" id="windArrowsBox" checked> Vindpile på banen</label>
+  <button type="button" id="muteBtn" class="smallBtn" title="Slå lyden fra eller til (M)">🔊 Lyd: til</button>
+  <button type="button" id="skipBtn" class="smallBtn" title="Spring dette hul over (N, to gange)">Spring hul over</button>
+</div>
+<div id="clubs"></div>
+<div id="help"><kbd>Q</kbd> længere / <kbd>E</kbd> kortere kølle &nbsp;·&nbsp; <kbd>←</kbd> <kbd>→</kbd> sigt &nbsp;·&nbsp; <kbd>↑</kbd> <kbd>↓</kbd> fin-justering &nbsp;·&nbsp; hold <kbd>Space</kbd> for kraft, slip for at slå &nbsp;·&nbsp; <kbd>R</kbd> tilbage til teestedet (slagene tæller) &nbsp;·&nbsp; <kbd>V</kbd> vindpile til/fra &nbsp;·&nbsp; <kbd>M</kbd> lyd til/fra &nbsp;·&nbsp; <kbd>N</kbd> <kbd>N</kbd> spring hul over</div>
+
+<script src="lyd/lyd.js"></script>
+<script src="fysik.js"></script>
+<script>
+// hvis lyd/lyd.js ikke kunne indlæses, kører spillet videre uden lyd
+const noSound = typeof sfx === 'undefined';
+if (noSound) { console.warn('lyd/lyd.js kunne ikke indlæses – spillet kører uden lyd'); window.actx = null; window.sfx = new Proxy({}, { get: () => () => {} }); window.audio = () => {}; }
+// Gemning i Arkaden: arkade.gem() og arkade.hent(). Uden for hallen huskes det kun, mens siden er åben.
+// lagerHent kalder fn med værdien, når den er klar (også hvis Arkaden svarer med et løfte).
+const huskLokalt = {};
+function lagerGem(k, v) {
+  try { if (window.arkade && arkade.gem) return arkade.gem(k, v); } catch (_) {}
+  huskLokalt[k] = v;
+}
+function lagerHent(k, fn) {
+  let v;
+  try { v = window.arkade && arkade.hent ? arkade.hent(k) : huskLokalt[k]; } catch (_) { v = null; }
+  if (v && typeof v.then === 'function') v.then(x => fn(x ?? null), () => {}); else fn(v ?? null);
+}
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+
+// ---------- Baner ----------
+// ellipse: [x, y, rx, ry, rotation]
+const HOLES = [
+  {
+    par: 3,
+    tee: [120, 300], cup: [770, 300],
+    fairway: [[420, 300, 300, 85, 0]],
+    green: [770, 300, 72],
+    sand: [[690, 195, 48, 24, 0.3], [700, 410, 52, 24, -0.3], [520, 380, 40, 20, 0]],
+    water: [],
+    trees: [[300, 160, 22], [360, 450, 24], [600, 150, 20], [880, 180, 22], [880, 430, 22]],
+  },
+  {
+    par: 4,
+    tee: [90, 510], cup: [840, 120],
+    fairway: [[290, 450, 230, 80, -0.35], [590, 250, 210, 80, -0.65]],
+    green: [840, 120, 75],
+    sand: [[760, 205, 45, 22, -0.6], [905, 200, 30, 40, 0], [430, 250, 45, 22, 0.4]],
+    water: [[520, 430, 110, 60, 0.2]],
+    trees: [[160, 380, 24], [250, 560, 20], [700, 380, 26], [780, 470, 22], [620, 90, 22], [380, 120, 24]],
+  },
+  {
+    par: 4,
+    tee: [100, 120], cup: [850, 470],
+    fairway: [[260, 200, 200, 80, 0.5], [660, 420, 220, 80, 0.3]],
+    green: [850, 470, 70],
+    sand: [[770, 380, 40, 20, 0.5], [920, 540, 35, 22, 0], [640, 330, 38, 18, 0.2]],
+    water: [[470, 300, 45, 330, 0.1]],
+    trees: [[120, 330, 24], [230, 460, 22], [330, 70, 22], [720, 110, 26], [880, 260, 22], [600, 540, 22]],
+  },
+  {
+    // Par 5 – dogleg højre: op ad venstre side, så knæk mod højre
+    par: 5,
+    tee: [130, 540], cup: [865, 150], aimAt: [140, 220],
+    fairway: [[130, 360, 210, 65, Math.PI / 2], [200, 150, 120, 75, 0.3], [540, 160, 270, 70, 0.03]],
+    green: [865, 150, 68],
+    sand: [[430, 228, 42, 16, 0.05], [790, 88, 34, 16, 0.2], [800, 222, 38, 17, -0.25], [250, 70, 40, 16, 0.2]],
+    water: [[440, 430, 125, 70, 0.1]],
+    trees: [[300, 300, 26], [330, 530, 24], [570, 320, 24], [700, 460, 26], [250, 420, 22], [640, 560, 22],
+            [40, 250, 22], [60, 80, 22], [500, 60, 24], [940, 330, 22], [920, 40, 20]],
+  },
+  {
+    // Par 4 – dogleg venstre: ud mod højre, så knæk opad mod venstre
+    par: 4,
+    tee: [130, 500], cup: [730, 100], aimAt: [600, 490],
+    fairway: [[310, 500, 230, 65, 0], [620, 470, 110, 75, -0.5], [700, 285, 195, 65, -1.4]],
+    green: [730, 100, 68],
+    sand: [[640, 85, 22, 34, 0], [815, 150, 36, 17, -0.4], [770, 545, 42, 18, 0.3], [420, 440, 40, 15, 0]],
+    water: [[430, 270, 115, 75, 0.3]],
+    trees: [[560, 360, 24], [320, 370, 22], [590, 185, 24], [440, 135, 22], [250, 230, 24],
+            [860, 520, 24], [900, 300, 22], [80, 380, 22], [480, 575, 22], [880, 60, 20]],
+  },
+  {
+    // Par 3 – halvø-green: den lige vej går over søen, den sikre vej går op og rundt ad fairwayen
+    par: 3,
+    tee: [200, 470], cup: [700, 230],
+    fairway: [[260, 360, 140, 45, -1.15], [430, 175, 180, 50, 0.1]],
+    green: [700, 230, 62],
+    sand: [[625, 160, 35, 16, -0.3], [785, 200, 20, 38, 0], [690, 320, 32, 14, 0.1]],
+    water: [[470, 360, 150, 95, -0.4], [860, 400, 70, 45, 0.3]],
+    trees: [[110, 250, 24], [90, 560, 22], [620, 560, 24], [880, 90, 22], [330, 565, 22], [520, 60, 22], [930, 250, 22]],
+  },
+  {
+    // Par 4 – skovgangen: smal fairway på skrå mellem to rækker træer, en å foran green
+    par: 4,
+    tee: [80, 90], cup: [860, 500],
+    fairway: [[80, 90, 32, 24, 0], [300, 210, 240, 58, 0.48], [640, 390, 220, 58, 0.48]],
+    green: [860, 500, 66],
+    sand: [[790, 580, 40, 15, 0.2], [935, 445, 18, 36, 0], [560, 325, 36, 15, 0.48]],
+    water: [[735, 432, 18, 110, 0.48]],
+    trees: [[244, 69, 22], [394, 148, 22], [544, 227, 22], [694, 306, 22], [844, 385, 20],
+            [156, 237, 22], [306, 316, 22], [456, 395, 22], [606, 474, 22],
+            [40, 300, 22], [700, 60, 26], [920, 220, 22], [300, 560, 24]],
+  },
+  {
+    // Par 5 – S-kurven: mod højre, op gennem midten, mod højre igen. Genvej over søen for de modige
+    par: 5,
+    tee: [90, 520], cup: [870, 110], aimAt: [430, 520],
+    fairway: [[280, 520, 200, 55, 0], [520, 360, 170, 60, -1.2], [730, 150, 170, 55, -0.1]],
+    green: [870, 110, 60],
+    sand: [[500, 560, 40, 15, 0], [610, 205, 38, 15, -0.3], [795, 55, 30, 14, 0.2], [905, 190, 30, 14, -0.3]],
+    water: [[330, 330, 120, 70, -0.2]],
+    trees: [[120, 380, 24], [640, 470, 24], [420, 170, 24], [760, 300, 26], [930, 330, 22], [240, 90, 22],
+            [60, 180, 22], [800, 560, 22], [590, 70, 20]],
+  },
+  {
+    // Par 4 – finalen: en stor sø midt på banen. Over søen er kort og farligt, rundt ad bunden og op er sikkert
+    par: 4,
+    tee: [90, 540], cup: [820, 140],
+    fairway: [[90, 540, 32, 24, 0], [415, 545, 325, 45, 0], [760, 360, 170, 55, 1.35], [600, 185, 95, 45, 0.35]],
+    green: [820, 140, 64],
+    sand: [[730, 85, 30, 15, -0.4], [735, 215, 32, 15, 0.5], [540, 235, 34, 14, 0.4], [630, 470, 36, 14, 0]],
+    water: [[460, 330, 190, 110, 0.5]],
+    trees: [[900, 300, 22], [900, 560, 22], [580, 60, 24], [260, 120, 26], [60, 300, 22], [200, 400, 22], [360, 50, 22], [30, 420, 20]],
+  },
+];
+
+const FRICTION = { green: 85, fairway: 140, rough: 320, sand: 1100 };
+const G = 620;            // tyngdekraft
+const CUP_R = 7;
+const BALL_R = 4.5;
+const POWER_TIME = 1.4;   // sekunder til fuld kraft
+
+function inEllipse(px, py, e) {
+  const [x, y, rx, ry, rot] = e;
+  const dx = px - x, dy = py - y;
+  const c = Math.cos(-rot), s = Math.sin(-rot);
+  const lx = dx * c - dy * s, ly = dx * s + dy * c;
+  return (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry) <= 1;
+}
+
+function terrainAt(x, y) {
+  const h = hole();
+  if (x < 0 || y < 0 || x > W || y > H) return 'oob';
+  if (h.water.some(e => inEllipse(x, y, e))) return 'water';
+  if (h.sand.some(e => inEllipse(x, y, e))) return 'sand';
+  if (Math.hypot(x - h.green[0], y - h.green[1]) <= h.green[2]) return 'green';
+  if (h.fairway.some(e => inEllipse(x, y, e))) return 'fairway';
+  return 'rough';
+}
+
+// ---------- Spiltilstand ----------
+let holeIdx = 0;
+let strokes = 0;
+let scores = [];
+let aim = 0;
+let power = 0;
+let charging = false;
+let state = 'aim';        // aim | flying | holed | done
+let ball, lastPos;
+let swing = 0;            // 0..1 baglæns sving, negativ = gennemsving
+let swingAnim = 0;
+let msg = '', msgTime = 0;
+let wind = { dir: 0, speed: 0 };   // speed i m/s
+let ducks = [];                    // ænder der svømmer rundt i søerne
+let particles = [];
+let trail = [], landSpot = null;
+// Rekorder gemmes i browseren for hvert sted (byen fra vejret, ellers "Tilfældig vind"): { sted: { huller: [], runde } }
+let records = {};
+lagerHent('golf.rekorder', v => {
+  try { records = (typeof v === 'string' ? JSON.parse(v) : v) || {}; } catch (_) { records = {}; }
+  if (typeof hole === 'function' && ball) updateHud();   // vis rekorden, når den er hentet
+});
+let newHoleRecords = [], roundResult = null;   // til scorekortet
+function recKey() { return weather ? weather.sted : 'Tilfældig vind'; }
+function myRecords() { return records[recKey()] || (records[recKey()] = { huller: [], runde: null }); }
+function storeRecords() { lagerGem('golf.rekorder', JSON.stringify(records)); }   // sporet fra sidste slag: punkter [x, y, z] og hvor bolden først ramte jorden
+const keys = {};
+
+// ---------- Køller ----------
+// fart og loft: bestemmer tilsammen hvor langt bolden flyver, rul: hvor meget af farten den beholder ved landing
+// vinkel: udgangsvinkel i grader – bestemmer hvor HØJT bolden flyver (ikke hvor langt).
+// 14 køller, som en rigtig golfbag må have. Flyvelængden falder jævnt (ca. 6–9 m pr. kølle),
+// og jo kortere kølle, jo stejlere og højere bue (driveren topper i ca. 68 px, lob wedge i ca. 89 px,
+// så wedges kan komme over træerne på 50–65 px) og jo mindre rul. bunker: hvor meget af farten køllen beholder fra sand.
+const CLUBS = [
+  { navn: 'Driver',         kort: 'D',  fart: 1.080, loft: 0.50, vinkel: 30, rul: 0.50, bunker: 0.6 },
+  { navn: 'Træ 3',          kort: '3T', fart: 1.017, loft: 0.52, vinkel: 32, rul: 0.48, bunker: 0.6 },
+  { navn: 'Træ 5',          kort: '5T', fart: 0.954, loft: 0.55, vinkel: 34, rul: 0.46, bunker: 0.6 },
+  { navn: 'Hybrid 4',       kort: '4H', fart: 0.893, loft: 0.58, vinkel: 36, rul: 0.44, bunker: 0.65 },
+  { navn: 'Jern 5',         kort: '5',  fart: 0.829, loft: 0.62, vinkel: 39, rul: 0.42, bunker: 0.6 },
+  { navn: 'Jern 6',         kort: '6',  fart: 0.773, loft: 0.66, vinkel: 41, rul: 0.38, bunker: 0.6 },
+  { navn: 'Jern 7',         kort: '7',  fart: 0.720, loft: 0.70, vinkel: 44, rul: 0.34, bunker: 0.65 },
+  { navn: 'Jern 8',         kort: '8',  fart: 0.666, loft: 0.75, vinkel: 47, rul: 0.32, bunker: 0.65 },
+  { navn: 'Jern 9',         kort: '9',  fart: 0.619, loft: 0.80, vinkel: 50, rul: 0.30, bunker: 0.7 },
+  { navn: 'Pitching wedge', kort: 'PW', fart: 0.559, loft: 0.86, vinkel: 54, rul: 0.28, bunker: 0.75 },
+  { navn: 'Gap wedge',      kort: 'GW', fart: 0.508, loft: 0.92, vinkel: 58, rul: 0.25, bunker: 0.8 },
+  { navn: 'Sand wedge',     kort: 'SW', fart: 0.450, loft: 1.00, vinkel: 62, rul: 0.22, bunker: 0.9 },
+  { navn: 'Lob wedge',      kort: 'LW', fart: 0.381, loft: 1.12, vinkel: 70, rul: 0.18, bunker: 0.85 },
+  { navn: 'Putter',         kort: 'P',  fart: 0,     loft: 0,    vinkel: 0,  rul: 1.00, bunker: 0.6 },
+];
+const PUTTER = CLUBS.length - 1;
+let club = 0;
+
+// slagets fart og løft for en kølle fra et givet terræn
+function clubShot(c, lie, p) {
+  const k = CLUBS[c];
+  if (k.loft === 0) return { horiz: 330 * p, vz: 0 };   // putter: ruller kun
+  let speed = 540 * k.fart * p;
+  if (lie === 'rough') speed *= 0.85;
+  if (lie === 'sand') speed *= k.bunker;
+  // længden i luften er den samme som før (fart, loft og lie); vinklen bestemmer kun, hvor højt buen går
+  const carry = 2 * (speed * 0.85) * (speed * k.loft) / G;
+  return launchFromCarry(carry, k.vinkel, G);
+}
+// hvor langt bolden flyver i luften ved fuld kraft (uden vind)
+function clubCarry(c, lie) { const s = clubShot(c, lie, 1); return s.horiz * 2 * s.vz / G; }
+
+// caddien foreslår en kølle: putter på green, ellers den korteste, der kan nå hullet
+function suggestClub() {
+  const lie = terrainAt(ball.x, ball.y);
+  if (lie === 'green') return PUTTER;
+  const d = Math.hypot(ball.x - hole().cup[0], ball.y - hole().cup[1]);
+  for (let c = PUTTER - 1; c >= 0; c--) if (clubCarry(c, lie) >= d * 0.95) return c;
+  return lie === 'sand' ? 3 : 0;   // langt fra hullet: driveren, men fra bunkeren højst en hybrid
+}
+function setClub(c, announce) {
+  if (c < 0 || c >= CLUBS.length || state !== 'aim' || charging) return;
+  club = c;
+  if (announce) { sfx.tick(); showMsg(CLUBS[c].navn, 0.8); }
+  updateClubButtons();
+}
+
+// knapper under banen: klik vælger køllen, den valgte er mørk
+const clubsEl = document.getElementById('clubs');
+// korte navne på knapperne (D, 3T, 7, PW …), grupperet som i en golfbag; det fulde navn står ved siden af
+const clubButtons = CLUBS.map((k, i) => {
+  const b = document.createElement('button');
+  b.textContent = k.kort;
+  b.addEventListener('click', () => { setClub(i, true); cv.focus(); });
+  if (i === 4 || i === 9 || i === PUTTER) clubsEl.appendChild(Object.assign(document.createElement('span'), { className: 'gap' }));
+  clubsEl.appendChild(b);
+  return b;
+});
+const clubNameEl = Object.assign(document.createElement('span'), { id: 'clubName' });
+clubsEl.appendChild(clubNameEl);
+function clubRange(i, lie) {
+  return i === PUTTER ? 'ruller bolden' : `ca. ${Math.round(clubCarry(i, lie) / 4)} m i luften`;
+}
+function updateClubButtons() {
+  const lie = state === 'aim' ? terrainAt(ball.x, ball.y) : null;
+  clubButtons.forEach((b, i) => {
+    b.classList.toggle('valgt', i === club);
+    b.disabled = state !== 'aim';
+    b.title = CLUBS[i].navn + (lie ? ' – ' + clubRange(i, lie) + ' ved fuld kraft herfra' : '');
+  });
+  clubNameEl.textContent = CLUBS[club].navn + (lie ? ' · ' + clubRange(club, lie) : '');
+}
+
+function hole() { return HOLES[holeIdx]; }
+
+function startHole() {
+  const h = hole();
+  // ny flagplacering hver gang hullet spilles: 30–65 % af radius fra greenens midte
+  const [gx, gy, gr] = h.green;
+  const pinAng = Math.random() * Math.PI * 2;
+  const pinDist = gr * (0.3 + Math.random() * 0.35);
+  h.cup = [Math.round(gx + Math.cos(pinAng) * pinDist), Math.round(gy + Math.sin(pinAng) * pinDist)];
+  ball ={ x: h.tee[0], y: h.tee[1], z: 0, vx: 0, vy: 0, vz: 0 };
+  lastPos = [ball.x, ball.y];
+  strokes = 0;
+  state = 'aim';
+  // sigtet starter skævt: 20–60 grader ved siden af målet, til en tilfældig side
+  const target = h.aimAt || h.cup;
+  const offset = (0.35 + Math.random() * 0.7) * (Math.random() < 0.5 ? -1 : 1);
+  aim = Math.atan2(target[1] - h.tee[1], target[0] - h.tee[0]) + offset;
+  // vind for hullet: det rigtige vejr fra den valgte by, ellers 1–10 m/s fra en tilfældig retning
+  wind = weather ? weatherWind() : { dir: Math.random() * Math.PI * 2, speed: 1 + Math.round(Math.random() * 9) };
+  spawnDucks();
+  trail = []; landSpot = null;
+  power = 0; charging = false; swing = 0; swingAnim = 0;
+  setClub(suggestClub());
+  sfx.chargeStop();
+  sfx.setWind(wind.speed);
+  if (actx && actx.state === 'running') sfx.newHole();
+  showMsg(`Hul ${holeIdx + 1} – Par ${h.par}`);
+  updateHud();
+}
+
+// R: bolden tilbage på teestedet. Slagene tæller stadig, og flag og vind er de samme,
+// så man ikke kan slette et dårligt slag eller "trække" en bedre vind.
+function backToTee() {
+  const h = hole();
+  ball = { x: h.tee[0], y: h.tee[1], z: 0, vx: 0, vy: 0, vz: 0 };
+  lastPos = [ball.x, ball.y];
+  state = 'aim';
+  const target = h.aimAt || h.cup;
+  aim = Math.atan2(target[1] - h.tee[1], target[0] - h.tee[0]) + (0.35 + Math.random() * 0.7) * (Math.random() < 0.5 ? -1 : 1);
+  trail = []; landSpot = null;
+  power = 0; charging = false; swing = 0; swingAnim = 0;
+  sfx.chargeStop();
+  setClub(suggestClub());
+  showMsg(`Tilbage på teestedet – ${strokes} slag tæller`, 1.8);
+  updateHud();
+}
+
+// ---------- Ænder ----------
+// En sø skrumpet ind, så ænderne holder sig fra bredden
+function innerWater(e, f = 0.75) { return [e[0], e[1], e[2] * f, e[3] * f, e[4]]; }
+
+function spawnDucks() {
+  ducks = [];
+  hole().water.forEach(e => {
+    const n = Math.min(3, 2 + Math.floor(e[2] * e[3] / 8000));   // større søer: 3 (den sidste er en ælling)
+    for (let i = 0; i < n; i++) {
+      let x, y, tries = 0;
+      do {   // tilfældigt sted inde i søen
+        x = e[0] + (Math.random() * 2 - 1) * Math.max(e[2], e[3]);
+        y = e[1] + (Math.random() * 2 - 1) * Math.max(e[2], e[3]);
+      } while (!inEllipse(x, y, innerWater(e, 0.6)) && ++tries < 200);
+      if (tries >= 200) { x = e[0]; y = e[1]; }
+      ducks.push({ x, y, pond: e, dir: Math.random() * Math.PI * 2, turn: 0, speed: 8 + Math.random() * 6,
+                   flee: 0, bob: Math.random() * 10, chick: i === n - 1 && n === 3 });
+    }
+  });
+}
+
+function updateDucks(dt) {
+  for (const d of ducks) {
+    d.bob += dt;
+    if (d.flee > 0) d.flee -= dt;
+    // vandrer lidt tilfældigt
+    d.turn += (Math.random() - 0.5) * 3 * dt;
+    d.turn = Math.max(-0.8, Math.min(0.8, d.turn));
+    d.dir += d.turn * dt;
+    // tæt på bredden: drej ind mod midten af søen
+    if (!inEllipse(d.x, d.y, innerWater(d.pond))) {
+      const want = Math.atan2(d.pond[1] - d.y, d.pond[0] - d.x);
+      let diff = ((want - d.dir + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      d.dir += Math.sign(diff) * Math.min(Math.abs(diff), 2.5 * dt);
+    }
+    const sp = d.flee > 0 ? 55 : d.speed;
+    const nx = d.x + Math.cos(d.dir) * sp * dt, ny = d.y + Math.sin(d.dir) * sp * dt;
+    if (inEllipse(nx, ny, innerWater(d.pond, 0.9))) { d.x = nx; d.y = ny; }
+    else d.dir += Math.PI * dt * 2;   // ved kanten: vend om
+  }
+}
+
+// bolden plasker i vandet: ænder tæt på svømmer hurtigt væk
+function scareDucks(x, y) {
+  for (const d of ducks) {
+    if (Math.hypot(d.x - x, d.y - y) < 90) { d.dir = Math.atan2(d.y - y, d.x - x); d.turn = 0; d.flee = 2; }
+  }
+}
+
+function drawDucks() {
+  for (const d of ducks) {
+    const s = d.chick ? 0.65 : 1;
+    const bob = Math.sin(d.bob * 3) * 0.6;
+    ctx.save();
+    ctx.translate(d.x, d.y + bob);
+    ctx.rotate(d.dir);
+    ctx.scale(s, s);
+    // kølvand
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+    const wl = d.flee > 0 ? 18 : 10;
+    ctx.beginPath(); ctx.moveTo(-5, -3); ctx.lineTo(-5 - wl, -7); ctx.moveTo(-5, 3); ctx.lineTo(-5 - wl, 7); ctx.stroke();
+    // krop
+    ctx.fillStyle = d.chick ? '#e0c24a' : '#8a6a46';
+    ctx.beginPath(); ctx.ellipse(0, 0, 7, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = d.chick ? '#cfae32' : '#6e5235';    // vinge
+    ctx.beginPath(); ctx.ellipse(-1, 0, 4, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    // hoved og næb
+    ctx.fillStyle = d.chick ? '#e9cf5c' : '#2e7d32';
+    ctx.beginPath(); ctx.arc(6, 0, 2.8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f39c12';
+    ctx.beginPath(); ctx.moveTo(8.3, -1.1); ctx.lineTo(11, 0); ctx.lineTo(8.3, 1.1); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function showMsg(t, dur = 2) { msg = t; msgTime = dur; }
+
+// Spillede huller indtil nu. Et oversprunget hul står som null i scores og tæller hverken i total eller par.
+function playedSoFar() {
+  let total = 0, par = 0, holes = 0, skipped = 0;
+  scores.forEach((s, i) => { if (s == null) skipped++; else { total += s; par += HOLES[i].par; holes++; } });
+  return { total, par, holes, skipped };
+}
+
+function updateHud() {
+  document.getElementById('holeInfo').textContent = `Hul ${holeIdx + 1}/${HOLES.length} (Par ${hole().par})`;
+  document.getElementById('strokeInfo').textContent = `Slag: ${strokes}`;
+  const p = playedSoFar();
+  const diff = p.total - p.par;
+  document.getElementById('totalInfo').textContent =
+    `Total: ${p.total}` + (p.holes ? ` (${diff === 0 ? 'E' : (diff > 0 ? '+' : '') + diff})` : '') +
+    (p.skipped ? ` · ${p.skipped} sprunget over` : '');
+  const best = myRecords().huller[holeIdx];
+  document.getElementById('recordInfo').textContent = `Rekord: ${best ?? '–'}`;
+  document.getElementById('recordInfo').title = `Din bedste score på dette hul (${recKey()})`;
+  updateClubButtons();
+}
+
+function shoot() {
+  const p = Math.max(0.04, power);
+  const lie = terrainAt(ball.x, ball.y);
+  const putt = club === PUTTER;
+  const { horiz, vz } = clubShot(club, lie, p);
+  ball.vx = Math.cos(aim) * horiz;
+  ball.vy = Math.sin(aim) * horiz;
+  ball.vz = vz;
+  ball.rul = CLUBS[club].rul;
+  lastPos = [ball.x, ball.y];
+  strokes++;
+  state = 'flying';
+  swingAnim = 1;
+  ball.lipped = false; ball.prevDc = undefined;
+  trail = [[ball.x, ball.y, 0]]; landSpot = null;   // nyt slag: det gamle spor forsvinder
+  if (lie === 'sand') burst(ball.x, ball.y, '#e9d79a', 14);
+  sfx.chargeStop();
+  if (putt) sfx.putt(p); else sfx.swing(p, lie);
+  updateHud();
+}
+
+function burst(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = 30 + Math.random() * 90;
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.6 + Math.random() * 0.4, color });
+  }
+}
+
+function penalty(text) {
+  if (text.startsWith('Plask')) sfx.splash(); else sfx.thud();
+  strokes++;
+  ball.x = lastPos[0]; ball.y = lastPos[1];
+  ball.vx = ball.vy = ball.vz = ball.z = 0;
+  state = 'aim';
+  showMsg(text + ' +1 strafslag');
+  updateHud();
+}
+
+function holeName(diff) {
+  if (strokes === 1) return 'HOLE IN ONE!';
+  return { '-3': 'Albatros!', '-2': 'Eagle!', '-1': 'Birdie!', '0': 'Par', '1': 'Bogey', '2': 'Dobbelt bogey' }[diff] || `+${diff}`;
+}
+
+// ---------- Fysik ----------
+function update(dt) {
+  // sigte
+  if (state === 'aim') {
+    const rot = (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0);
+    const fine = (keys.ArrowUp ? -1 : 0) + (keys.ArrowDown ? 1 : 0);
+    aim += rot * 1.6 * dt + fine * 0.25 * dt;
+    if (charging) {
+      power = Math.min(1, power + dt / POWER_TIME);
+      swing = power;
+      sfx.chargeSet(power);
+    }
+  }
+  if (swingAnim > 0) {
+    swingAnim -= dt * 4;
+    // fra baglæns sving (power) gennem bolden til gennemsving (-0.8)
+    const t = 1 - Math.max(0, swingAnim);
+    swing = power + (-0.8 - power) * t;
+    if (swingAnim <= 0) { swing = 0; power = 0; }
+  }
+
+  if (state === 'flying') {
+    const steps = 4, h = dt / steps;
+    for (let i = 0; i < steps && state === 'flying'; i++) stepBall(h);
+  }
+
+  updateDucks(dt);
+  particles.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92; p.life -= dt; });
+  particles = particles.filter(p => p.life > 0);
+  if (msgTime > 0) msgTime -= dt;
+}
+
+function stepBall(dt) {
+  const h = hole();
+  const airborne = ball.z > 0 || ball.vz > 0;
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+  // gem et punkt til slagsporet, når bolden har flyttet sig et stykke
+  const lp = trail[trail.length - 1];
+  if (!lp || Math.hypot(ball.x - lp[0], ball.y - lp[1]) > 4) trail.push([ball.x, ball.y, Math.max(0, ball.z)]);
+
+  // træer
+  for (const [tx, ty, tr] of h.trees) {
+    const d = Math.hypot(ball.x - tx, ball.y - ty);
+    if (ballHitsTree(ball, [tx, ty, tr], BALL_R)) {
+      const nx = (ball.x - tx) / d, ny = (ball.y - ty) / d;
+      const dot = ball.vx * nx + ball.vy * ny;
+      if (dot < 0) {
+        ball.vx = (ball.vx - 2 * dot * nx) * 0.4;
+        ball.vy = (ball.vy - 2 * dot * ny) * 0.4;
+        ball.vz = Math.min(ball.vz, 0);
+        burst(ball.x, ball.y, '#3f7d3a', 8);
+        sfx.tree();
+      }
+      ball.x = tx + nx * (tr + BALL_R + 0.5);
+      ball.y = ty + ny * (tr + BALL_R + 0.5);
+    }
+  }
+
+  if (airborne) {
+    // vinden virker kun på bolden, mens den er i luften – som luftmodstand (windAccel i fysik.js)
+    const wpx = wind.speed * PX_PER_M;
+    const wa = windAccel(ball.vx, ball.vy, Math.cos(wind.dir) * wpx, Math.sin(wind.dir) * wpx);
+    ball.vx += wa.ax * dt;
+    ball.vy += wa.ay * dt;
+    ball.vz -= G * dt;
+    ball.z += ball.vz * dt;
+    if (ball.z <= 0) {
+      ball.z = 0;
+      if (!landSpot) landSpot = [ball.x, ball.y];   // første nedslag markeres med et kryds
+      const t = terrainAt(ball.x, ball.y);
+      if (t === 'water') { burst(ball.x, ball.y, '#bfe3ff', 16); scareDucks(ball.x, ball.y); return penalty('Plask! Vand.'); }
+      if (t === 'oob') return penalty('Out of bounds!');
+      sfx.land(t, -ball.vz);
+      if (t === 'sand') {
+        burst(ball.x, ball.y, '#e9d79a', 12);
+        ball.vx *= 0.15; ball.vy *= 0.15; ball.vz = 0;
+      } else {
+        const bounce = t === 'green' ? 0.25 : t === 'fairway' ? 0.35 : 0.2;
+        // høje køller (wedge) lander stejlt og ruller mindre end driveren
+        const keep = landingKeep(t, ball.rul ?? 1);   // greenen holder bolden bedre end fairwayen
+        ball.rul = 1;   // kun første nedslag bremses ekstra
+        ball.vz = -ball.vz * bounce;
+        if (ball.vz < 40) ball.vz = 0;
+        ball.vx *= keep; ball.vy *= keep;
+      }
+    }
+    return;
+  }
+
+  // rul
+  const t = terrainAt(ball.x, ball.y);
+  if (t === 'water') { burst(ball.x, ball.y, '#bfe3ff', 16); scareDucks(ball.x, ball.y); return penalty('Plask! Vand.'); }
+  if (t === 'oob') return penalty('Out of bounds!');
+  let speed = Math.hypot(ball.vx, ball.vy);
+
+  // hullet
+  const dc = Math.hypot(ball.x - h.cup[0], ball.y - h.cup[1]);
+  if (ballDropsInCup(dc, speed)) return holeOut();
+  const leaving = ball.prevDc !== undefined && dc > ball.prevDc;
+  ball.prevDc = dc;
+  if (dc < CUP_R && leaving && !ball.lipped) {
+    // er rullet hen over hullet uden at falde i og er på vej ud: bolden "lipper ud" – bremses og afbøjes én gang
+    ball.lipped = true; sfx.lipOut();
+    const turn = (Math.random() - 0.5) * 0.9;
+    const c = Math.cos(turn), s = Math.sin(turn);
+    [ball.vx, ball.vy] = [(ball.vx * c - ball.vy * s) * 0.7, (ball.vx * s + ball.vy * c) * 0.7];
+    speed = Math.hypot(ball.vx, ball.vy);
+  }
+  if (dc >= CUP_R + 2) { ball.lipped = false; ball.prevDc = undefined; }
+
+  const dec = FRICTION[t] * (weather ? weatherFriction(weather.kind) : 1) * dt;
+  if (speed <= dec || speed < 3) {
+    if (ballDropsInCup(dc, 0)) return holeOut();   // stopper over hullet: falder kun i tæt på midten
+    ball.vx = ball.vy = 0;
+    state = 'aim';
+    aim = Math.atan2(h.cup[1] - ball.y, h.cup[0] - ball.x);
+    // sigtet peger aldrig direkte mod hullet: på green 10–35 grader ved siden af, ellers 20–60 grader
+    const off = t === 'green' ? 0.17 + Math.random() * 0.44 : 0.35 + Math.random() * 0.7;
+    aim += off * (Math.random() < 0.5 ? -1 : 1);
+    setClub(suggestClub());
+    if (t === 'sand') showMsg('I bunkeren…', 1.5);
+  } else {
+    ball.vx -= ball.vx / speed * dec;
+    ball.vy -= ball.vy / speed * dec;
+  }
+}
+
+function holeOut() {
+  const h = hole();
+  ball.x = h.cup[0]; ball.y = h.cup[1];
+  ball.vx = ball.vy = 0;
+  state = 'holed';
+  scores.push(strokes);
+  burst(h.cup[0], h.cup[1], '#ffffff', 24);
+  sfx.cup();
+  sfx.result(strokes - h.par, strokes === 1);
+  const last = holeIdx === HOLES.length - 1;
+  if (last) sfx.fanfare();
+  // rekord for hullet: "ny rekord" vises kun, når en tidligere rekord bliver slået
+  const r = myRecords();
+  const hadRecord = r.huller[holeIdx] != null;
+  const holeRecord = saveRecord(r, holeIdx, strokes) && hadRecord;
+  newHoleRecords[holeIdx] = holeRecord;
+  if (last) finishRound();
+  storeRecords();
+  showMsg(`${holeName(strokes - h.par)}  (${strokes} slag)` + (holeRecord ? ' – ny rekord!' : '') + (last ? '' : ' – tryk Enter'), 999);
+  updateHud();
+  if (last) { state = 'done'; }
+}
+
+// Runden er slut: rundrekorden gælder kun for hele runder uden overspringede huller
+function finishRound() {
+  const r = myRecords();
+  const p = playedSoFar();
+  // en rundrekord gælder kun for samme antal huller (en gammel 5-hullers rekord tæller ikke mod 9 huller)
+  const prev = r.rundeHuller === HOLES.length ? r.runde : null;
+  const best = !p.skipped && isNewRecord(prev, p.total);
+  if (best) { r.runde = p.total; r.rundeHuller = HOLES.length; }
+  roundResult = { sted: recKey(), bedste: r.rundeHuller === HOLES.length ? r.runde : null, ny: best && prev != null, skipped: p.skipped };
+  if (roundResult.ny) setTimeout(() => sfx.fanfare(), 1800);   // ekstra fanfare for ny rundrekord
+  storeRecords();
+}
+
+// ---------- Spring hul over ----------
+// Kræver to tryk (N eller knappen) inden for 3 sek., så man ikke springer over ved et uheld.
+// Hullet tæller hverken i total, par eller rekorder, og en runde med overspringede huller kan ikke give rundrekord.
+let skipArmed = 0;
+const skipBtn = document.getElementById('skipBtn');
+function skipRequest() {
+  if (state !== 'aim' || charging || swingAnim > 0) return;
+  const now = performance.now();
+  if (!skipArmed || now - skipArmed > 3000) {
+    skipArmed = now;
+    showMsg(`Tryk N igen for at springe hul ${holeIdx + 1} over`, 3);
+    skipBtn.textContent = 'Klik igen for at springe over';
+    setTimeout(() => { if (performance.now() - skipArmed >= 2990) skipBtn.textContent = 'Spring hul over'; }, 3000);
+    return;
+  }
+  skipArmed = 0;
+  skipBtn.textContent = 'Spring hul over';
+  scores.push(null);
+  newHoleRecords[holeIdx] = false;
+  sfx.chargeStop();
+  if (holeIdx === HOLES.length - 1) {
+    finishRound();
+    state = 'done';
+    msgTime = 0;
+    updateHud();
+  } else {
+    const skipped = holeIdx + 1;
+    holeIdx++;
+    startHole();
+    showMsg(`Hul ${skipped} sprunget over – Hul ${holeIdx + 1}, Par ${hole().par}`, 2.5);
+  }
+}
+skipBtn.addEventListener('click', () => { skipRequest(); cv.focus(); });
+
+// ---------- Lyd til/fra ----------
+let soundOff = false;
+const muteBtn = document.getElementById('muteBtn');
+function setSoundOff(on) {
+  soundOff = on;
+  sfx.setMuted(on);
+  muteBtn.textContent = on ? '🔇 Lyd: fra' : '🔊 Lyd: til';
+  muteBtn.classList.toggle('slukket', on);
+  lagerGem('golf.lyd', on ? 'fra' : 'til');
+}
+lagerHent('golf.lyd', v => setSoundOff(v === 'fra'));
+muteBtn.addEventListener('click', () => { try { audio(); } catch (_) {} setSoundOff(!soundOff); cv.focus(); });
+
+// ---------- Tegning ----------
+function drawEllipse(e) {
+  ctx.beginPath();
+  ctx.ellipse(e[0], e[1], e[2], e[3], e[4], 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCourse() {
+  const h = hole();
+  // rough med striber
+  ctx.fillStyle = '#4f9443';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(0,0,0,0.04)';
+  for (let x = 0; x < W; x += 40) ctx.fillRect(x, 0, 20, H);
+
+  // fairway
+  ctx.fillStyle = '#74c25e';
+  h.fairway.forEach(drawEllipse);
+  ctx.save();
+  ctx.beginPath();
+  h.fairway.forEach(e => ctx.ellipse(e[0], e[1], e[2], e[3], e[4], 0, Math.PI * 2));
+  ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let x = -H; x < W; x += 36) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 18, 0); ctx.lineTo(x + 18 + H, H); ctx.lineTo(x + H, H); ctx.fill();
+  }
+  ctx.restore();
+
+  // green
+  const [gx, gy, gr] = h.green;
+  ctx.fillStyle = '#62b04f';
+  ctx.beginPath(); ctx.arc(gx, gy, gr + 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#95de78';
+  ctx.beginPath(); ctx.arc(gx, gy, gr, 0, Math.PI * 2); ctx.fill();
+
+  // vand
+  h.water.forEach(e => {
+    ctx.fillStyle = '#3a82b8';
+    drawEllipse([e[0], e[1], e[2] + 4, e[3] + 4, e[4]]);
+    ctx.fillStyle = '#62b0e6';
+    drawEllipse(e);
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
+    const tt = performance.now() / 600;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(e[0] + Math.sin(tt + i) * e[2] * 0.3, e[1] + (i - 1) * e[3] * 0.4, 12, 3, e[4], 0, Math.PI);
+      ctx.stroke();
+    }
+  });
+
+  // sand
+  h.sand.forEach(e => {
+    ctx.fillStyle = '#d8c585';
+    drawEllipse([e[0], e[1], e[2] + 3, e[3] + 3, e[4]]);
+    ctx.fillStyle = '#f5e6b0';
+    drawEllipse(e);
+  });
+
+  // tee-område
+  ctx.fillStyle = '#84d26b';
+  ctx.fillRect(h.tee[0] - 18, h.tee[1] - 18, 36, 36);
+  ctx.fillStyle = '#fff';
+  [[-12, -12], [12, 12]].forEach(([dx, dy]) => { ctx.beginPath(); ctx.arc(h.tee[0] + dx, h.tee[1] + dy, 3, 0, Math.PI * 2); ctx.fill(); });
+
+  // hul
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.arc(h.cup[0], h.cup[1], CUP_R, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawTrees() {
+  hole().trees.forEach(([x, y, r]) => {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(x + 8, y + 8, r, r * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2e6a27';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a8131';
+    ctx.beginPath(); ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.65, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4a9a40';
+    ctx.beginPath(); ctx.arc(x - r * 0.4, y - r * 0.4, r * 0.3, 0, Math.PI * 2); ctx.fill();
+  });
+}
+
+function drawFlag() {
+  const [x, y] = hole().cup;
+  const top = y - 46, cloth = 14, L = 26;
+  // flaget vajer med vinden: retning fra wind.dir, stræk og blafren fra wind.speed
+  const s = Math.min(1, wind.speed / 10);
+  const fx = Math.cos(wind.dir), fy = Math.sin(wind.dir);
+  const ext = 0.25 + 0.75 * s;                     // hvor udstrakt flaget er (svag vind = hænger)
+  const t = performance.now() / (260 - 150 * s);   // blafrer hurtigere i hård vind
+  const wave = Math.sin(t) * (1 + 3 * s);
+  // dugen sidder fast langs stangen og stikker kun ud til én side:
+  // til højre/venstre efter vindens vandrette retning, ned/op efter den lodrette (med/mod os)
+  const side = fx >= 0 ? 1 : -1;
+  let dx = fx * L * ext;
+  const minW = 8;                                   // ses vinden forfra/bagfra, er flaget smalt men synligt
+  if (Math.abs(dx) < minW) dx = side * minW;
+  const dy = fy * L * ext * 0.55 + (1 - ext) * L * 0.7;
+  const tipH = cloth * (0.7 + 0.3 * Math.abs(fx)); // dugen ser lidt kortere ud, når den peger mod/væk fra os
+  const a = [x, top], b = [x, top + cloth];
+  const ta = [x + dx, top + dy], tb = [x + dx, top + dy + tipH];
+  const ma = [(a[0] + ta[0]) / 2, (a[1] + ta[1]) / 2 + wave];
+  const mb = [(b[0] + tb[0]) / 2, (b[1] + tb[1]) / 2 - wave * 0.6];
+
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.moveTo(...a);
+  ctx.quadraticCurveTo(...ma, ...ta);
+  ctx.lineTo(...tb);
+  ctx.quadraticCurveTo(...mb, ...b);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#b71c1c'; ctx.lineWidth = 1; ctx.stroke();
+  // stangen tegnes ovenpå, så den altid ses
+  ctx.strokeStyle = '#eee'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, top); ctx.stroke();
+}
+
+function drawAim() {
+  if (state !== 'aim') return;
+  // sigtelinjen er længere for lange køller
+  const reach = club === PUTTER ? 120 : 60 + 120 * CLUBS[club].fart;
+  const len = 40 + reach * (charging ? power : 0.35);
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  ctx.rotate(aim);
+  ctx.setLineDash([6, 6]);
+  ctx.lineDashOffset = -performance.now() / 40;
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(len, 0); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath(); ctx.moveTo(len + 10, 0); ctx.lineTo(len, -6); ctx.lineTo(len, 6); ctx.fill();
+  ctx.restore();
+}
+
+function drawGolfer() {
+  if (state === 'holed' || state === 'done') return;
+  // golferen står ved siden af bolden, vinkelret på sigteretningen
+  const showAt = state === 'flying' ? lastPos : [ball.x, ball.y];
+  const side = aim - Math.PI / 2;
+  const fx = showAt[0] + Math.cos(side) * 22;
+  const fy = showAt[1] + Math.sin(side) * 22;
+  const facing = Math.cos(aim) >= 0 ? 1 : -1;
+
+  ctx.save();
+  ctx.translate(fx, fy);
+  // skygge
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(0, 2, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // ben
+  ctx.strokeStyle = '#2b3a67'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(-2, -14); ctx.lineTo(5, 0); ctx.stroke();
+  // krop
+  ctx.strokeStyle = '#f4f4f4'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(-1, -14); ctx.lineTo(0, -28); ctx.stroke();
+  // hoved + kasket
+  ctx.fillStyle = '#f1c27d';
+  ctx.beginPath(); ctx.arc(0, -34, 5.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath(); ctx.arc(0, -36, 5.5, Math.PI, 0); ctx.fill();
+  ctx.fillRect(facing > 0 ? 0 : -9, -37, 9, 2.5);
+
+  // køller: drejer om hænderne
+  const hands = [0, -18];
+  const angleRest = Math.PI / 2 + facing * 0.15;   // peger ned mod bolden
+  const ang = angleRest - facing * swing * 2.6;
+  const cx = hands[0] + Math.cos(ang) * 24;
+  const cy = hands[1] + Math.sin(ang) * 24;
+  // arme
+  ctx.strokeStyle = '#f1c27d'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, -26);
+  ctx.lineTo(hands[0] + Math.cos(ang) * 3, hands[1] + Math.sin(ang) * 3); ctx.stroke();
+  // kølle
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(hands[0], hands[1]); ctx.lineTo(cx, cy); ctx.stroke();
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + facing * 5, cy + 1); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBall() {
+  if (state === 'holed' || state === 'done') return;
+  // skygge
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(ball.x + ball.z * 0.15, ball.y + ball.z * 0.1, BALL_R, BALL_R * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const r = BALL_R + ball.z * 0.03;
+  const by = ball.y - ball.z * 0.6;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(ball.x, by, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1; ctx.stroke();
+}
+
+const powerFill = document.getElementById('powerFill');
+const powerPct = document.getElementById('powerPct');
+const lieEl = document.getElementById('lie');
+function drawPowerBar() {
+  powerFill.style.width = (power * 100) + '%';
+  powerPct.textContent = Math.round(power * 100) + '%';
+  lieEl.textContent = { green: 'Green (putt)', fairway: 'Fairway', rough: 'Rough', sand: 'Bunker' }[terrainAt(ball.x, ball.y)] || '';
+}
+
+const INFO_X = 12;   // afstand og vindmåler står oppe i venstre hjørne
+function drawInfo() {
+  // bliver gennemsigtig, når bolden eller golferen er under boksene (fx teestedet på hul 3)
+  const near = (px, py) => px < INFO_X + 200 && py < 165;
+  const g = state === 'flying' ? lastPos : [ball.x, ball.y];
+  ctx.save();
+  ctx.globalAlpha = near(ball.x, ball.y) || near(g[0], g[1]) ? 0.3 : 1;
+  drawInfoBoxes();
+  ctx.restore();
+}
+function drawInfoBoxes() {
+  const h = hole();
+  const d = Math.hypot(ball.x - h.cup[0], ball.y - h.cup[1]);
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(INFO_X, 12, 138, 30);
+  ctx.fillStyle = '#fff'; ctx.font = '600 14px Segoe UI, sans-serif';
+  ctx.fillText(`Til hullet: ${Math.round(d / 4)} m`, INFO_X + 10, 32);
+
+  // vindmåler
+  const bx = INFO_X, by = 48, bw = 138, bh = 74;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(`Vind: ${fmt(wind.speed)} m/s`, bx + 10, by + 20);
+  ctx.font = '700 10px Segoe UI, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('N↑', bx + bw - 24, by + 42);   // nord er opad på banen
+  ctx.font = '600 14px Segoe UI, sans-serif'; ctx.fillStyle = '#fff';
+  const cx = bx + bw / 2, cy = by + 48;
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.stroke();
+  if (wind.speed > 0) {
+    const len = 8 + wind.speed * 1.4;
+    const wob = Math.sin(performance.now() / 300) * 0.04 * wind.speed / 9;
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(wind.dir + wob);
+    ctx.strokeStyle = ctx.fillStyle = wind.speed >= 6 ? '#ff8a65' : wind.speed >= 3 ? '#ffeb3b' : '#b2ff9e';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len - 6, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(len + 2, 0); ctx.lineTo(len - 8, -6); ctx.lineTo(len - 8, 6); ctx.fill();
+    ctx.restore();
+  } else {
+    ctx.fillText('–', cx - 4, cy + 5);
+  }
+  // vejret i den valgte by
+  if (weather) {
+    const t = `${weather.sted} · ${weather.temp}° · ${KIND_NAME[weather.kind]}`;
+    ctx.font = '600 12px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(bx, by + bh + 6, Math.max(bw, ctx.measureText(t).width + 20), 26);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(t, bx + 10, by + bh + 23);
+  }
+}
+
+function drawMsg() {
+  if (msgTime <= 0 || !msg) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, msgTime * 2);
+  ctx.font = '700 30px Segoe UI, sans-serif';
+  const tw = ctx.measureText(msg).width;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(W / 2 - tw / 2 - 20, 30, tw + 40, 50);
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.fillText(msg, W / 2, 66);
+  ctx.restore();
+}
+
+// Slagspor: hvor bolden fløj (tegnet i højden som selve bolden) og rullede, plus et kryds ved første nedslag.
+// Bliver liggende, til næste slag slås, så man kan se, hvor meget vinden tog bolden.
+function drawTrail() {
+  if (trail.length < 2 || state === 'holed' || state === 'done') return;
+  ctx.save();
+  ctx.lineCap = 'round';
+  // skyggen på jorden: hele vejen bolden kom
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 2;
+  ctx.beginPath(); trail.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+  // selve banen i luften og på jorden
+  ctx.setLineDash([5, 6]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+  ctx.beginPath(); trail.forEach(([x, y, z], i) => i ? ctx.lineTo(x, y - z * 0.6) : ctx.moveTo(x, y - z * 0.6)); ctx.stroke();
+  ctx.setLineDash([]);
+  if (landSpot) {
+    const [x, y] = landSpot;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawScorecard() {
+  if (state !== 'done') return;
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+  ctx.font = '700 40px Segoe UI, sans-serif';
+  ctx.fillText('Runden er slut!', W / 2, 100);
+  // hullerne i to kolonner (1–5 til venstre, 6–9 til højre), så alle 9 kan være på skærmen
+  ctx.font = '600 19px Segoe UI, sans-serif';
+  const rec = records[roundResult ? roundResult.sted : recKey()] || { huller: [] };
+  const perCol = Math.ceil(HOLES.length / 2);
+  HOLES.forEach((h, i) => {
+    const col = i < perCol ? 0 : 1, row = i % perCol;
+    const x = W / 2 + (col ? 215 : -215), y = 160 + row * 34;
+    if (scores[i] == null) {   // oversprunget hul: gråt
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText(`Hul ${i + 1}: sprunget over (par ${h.par})`, x, y);
+      return;
+    }
+    ctx.fillStyle = newHoleRecords[i] ? '#ffd54f' : '#fff';   // ny rekord på hullet: guld
+    ctx.fillText(`Hul ${i + 1}: ${scores[i]} slag (par ${h.par})` +
+      (newHoleRecords[i] ? '  ★ ny rekord' : rec.huller[i] != null ? `  · rekord ${rec.huller[i]}` : ''), x, y);
+  });
+  ctx.fillStyle = '#fff';
+  const y0 = 160 + perCol * 34 + 30;
+  // total og par kun for de spillede huller
+  const p = playedSoFar();
+  const diff = p.total - p.par;
+  ctx.font = '700 28px Segoe UI, sans-serif';
+  ctx.fillText(`Total: ${p.total} slag, par ${p.par} (${diff === 0 ? 'lige par' : (diff > 0 ? '+' : '') + diff})` +
+    (p.skipped ? ` – ${p.holes} af ${HOLES.length} huller` : ''), W / 2, y0);
+  if (roundResult) {
+    ctx.font = '700 22px Segoe UI, sans-serif';
+    ctx.fillStyle = roundResult.ny ? '#ffd54f' : '#fff';
+    ctx.fillText(roundResult.skipped ? 'Ingen rundrekord – der blev sprunget huller over'
+      : roundResult.ny ? `★ NY REKORD for runden (${roundResult.sted})! ★`
+      : `Bedste runde (${roundResult.sted}): ${roundResult.bedste} slag`, W / 2, y0 + 42);
+    ctx.fillStyle = '#fff';
+  }
+  ctx.font = '500 18px Segoe UI, sans-serif';
+  ctx.fillText('Tryk Enter for at spille igen', W / 2, y0 + 84);
+  ctx.textAlign = 'left';
+}
+
+// ---------- Vindpile over banen ----------
+// Gennemsigtige pile i et gitter, der glider med vinden. Længden følger vindstyrken.
+// Kan slås fra med V eller afkrydsningsfeltet under banen; valget huskes i browseren.
+let showWindArrows = true;
+const windBox = document.getElementById('windArrowsBox');
+windBox.checked = showWindArrows;
+function setWindArrows(on, gem = true) {
+  showWindArrows = on;
+  windBox.checked = on;
+  if (gem) lagerGem('golf.vindpile', on ? 'til' : 'fra');
+}
+lagerHent('golf.vindpile', v => setWindArrows(v !== 'fra', false));
+windBox.addEventListener('change', () => { setWindArrows(windBox.checked); cv.focus(); });
+
+function drawWindArrows() {
+  if (!showWindArrows || wind.speed <= 0 || state === 'done') return;
+  const gap = 90;
+  const len = 6 + wind.speed * 4;                   // 10–46 px ved 1–10 m/s
+  const fx = Math.cos(wind.dir), fy = Math.sin(wind.dir);
+  // pilene glider langsomt i vindens retning (hurtigere i hård vind) og kommer ind igen i modsatte side
+  const dist = performance.now() / 1000 * wind.speed * 5;
+  const spanX = Math.ceil((W + 2 * gap) / gap) * gap, spanY = Math.ceil((H + 2 * gap) / gap) * gap;
+  const wrap = (v, span) => ((v % span) + span) % span - gap;
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = 2; ctx.lineCap = 'round';
+  for (let row = 0; row < spanY / gap; row++) {
+    for (let col = 0; col < spanX / gap; col++) {
+      // forskyd hver anden række, så pilene ikke står i lige søjler
+      const ox = (row % 2) * gap / 2;
+      const cx = wrap(col * gap + ox + fx * dist, spanX), cy = wrap(row * gap + fy * dist, spanY);
+      ctx.save();
+      ctx.translate(cx, cy); ctx.rotate(wind.dir);
+      ctx.beginPath(); ctx.moveTo(-len / 2, 0); ctx.lineTo(len / 2 - 4, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(len / 2 + 2, 0); ctx.lineTo(len / 2 - 6, -5); ctx.lineTo(len / 2 - 6, 5); ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- Vejr ----------
+// Arkaden-udgaven: spil i Arkaden må ikke bruge internettet, så der hentes intet rigtigt vejr.
+// weather er altid null, og hvert hul får tilfældig vind. (Det fulde spil kan hente vejret fra en dansk by.)
+const weather = null;
+const KIND_NAME = { sol: 'Sol', skyet: 'Skyet', taage: 'Tåge', regn: 'Regn', sne: 'Sne', torden: 'Torden' };
+
+// vinden på hvert hul svinger lidt omkring det målte: op mod halvvejs til vindstødene og ±12°
+function weatherWind() {
+  const speed = weather.speed + Math.random() * Math.max(0, weather.gust - weather.speed) * 0.5;
+  return windFromWeather(weather.fromDeg + (Math.random() * 2 - 1) * 12, speed);
+}
+
+function fmt(v) { return (Math.round(v * 10) / 10).toString().replace('.', ','); }
+
+// regndråber og snefnug, der falder og driver med vinden
+let weatherParts = [];
+function makeWeatherParticles() {
+  weatherParts = [];
+  if (!weather || !['regn', 'torden', 'sne'].includes(weather.kind)) return;
+  const n = weather.kind === 'sne' ? 140 : Math.round(80 + Math.min(1, weather.precip / 4) * 160);
+  for (let i = 0; i < n; i++) weatherParts.push({ x: Math.random() * W, y: Math.random() * H, s: 0.6 + Math.random() * 0.8 });
+}
+let flash = 0;
+function drawWeather(dt) {
+  if (!weather || state === 'done') return;
+  ctx.save();
+  // skyer gør banen en anelse mørkere, tåge gør den diset – holdt let, så banen stadig er lys
+  const shade = weather.kind === 'sol' ? 0 : (weather.cloud / 100) * (weather.kind === 'skyet' ? 0.08 : 0.14);
+  if (shade > 0) { ctx.fillStyle = `rgba(40,55,70,${shade})`; ctx.fillRect(0, 0, W, H); }
+  if (weather.kind === 'taage') { ctx.fillStyle = 'rgba(235,240,240,0.38)'; ctx.fillRect(0, 0, W, H); }
+  const vx = Math.cos(wind.dir) * wind.speed * 12, vy = Math.sin(wind.dir) * wind.speed * 12;
+  const snow = weather.kind === 'sne';
+  ctx.strokeStyle = 'rgba(220,235,255,0.55)'; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.2;
+  for (const p of weatherParts) {
+    // set oppefra falder dråberne "ind i" banen, så de vises som korte streger, der driver med vinden
+    const fall = snow ? 30 : 260;
+    p.x += (vx * (snow ? 1.4 : 1) + (snow ? Math.sin(p.y / 30) * 10 : 0)) * dt * p.s;
+    p.y += (vy + fall) * dt * p.s;
+    p.x = ((p.x % W) + W) % W; p.y = ((p.y % H) + H) % H;
+    if (snow) { ctx.beginPath(); ctx.arc(p.x, p.y, 1.6 * p.s, 0, Math.PI * 2); ctx.fill(); }
+    else {
+      const k = 0.035;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - (vx * k), p.y - (vy + fall) * k); ctx.stroke();
+    }
+  }
+  if (weather.kind === 'torden') {
+    if (flash <= 0 && Math.random() < dt / 9) flash = 0.25;   // et lyn ca. hvert 9. sekund
+    if (flash > 0) { flash -= dt; ctx.fillStyle = `rgba(255,255,255,${Math.max(0, flash) * 1.6})`; ctx.fillRect(0, 0, W, H); }
+  }
+  ctx.restore();
+}
+let lastDraw = performance.now();
+
+function draw() {
+  const nowD = performance.now(), dtD = Math.min(0.05, (nowD - lastDraw) / 1000); lastDraw = nowD;
+  drawCourse();
+  drawDucks();
+  drawTrail();
+  drawAim();
+  const inAir = ball.z > 0;
+  if (!inAir) drawBall();
+  drawGolfer();
+  drawTrees();
+  if (inAir) drawBall();   // en bold i luften er over trækronerne
+  drawFlag();
+  drawWeather(dtD);
+  drawWindArrows();
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+  });
+  ctx.globalAlpha = 1;
+  if (state !== 'done') { drawPowerBar(); drawInfo(); }
+  drawMsg();
+  drawScorecard();
+  if (noSound) {
+    ctx.fillStyle = 'rgba(160,0,0,0.85)';
+    ctx.fillRect(W - 300, H - 30, 290, 22);
+    ctx.fillStyle = '#fff'; ctx.font = '600 13px Segoe UI, sans-serif';
+    ctx.fillText('Ingen lyd: lyd/lyd.js kunne ikke indlæses', W - 292, H - 14);
+  }
+  if (!focused) {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = '700 34px Segoe UI, sans-serif';
+    ctx.fillText('Klik her for at spille', W / 2, H / 2);
+    ctx.font = '500 16px Segoe UI, sans-serif';
+    ctx.fillText('(spillet skal have fokus for at modtage tastetryk)', W / 2, H / 2 + 30);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ---------- Input ----------
+// Bruger e.code (fysisk tast) med e.key som reserve, så det virker på alle tastaturlayouts
+function keyName(e) {
+  const c = e.code, k = e.key;
+  if (c === 'Space' || k === ' ' || k === 'Spacebar') return ' ';
+  if (c === 'ArrowLeft' || k === 'ArrowLeft' || k === 'Left') return 'ArrowLeft';
+  if (c === 'ArrowRight' || k === 'ArrowRight' || k === 'Right') return 'ArrowRight';
+  if (c === 'ArrowUp' || k === 'ArrowUp' || k === 'Up') return 'ArrowUp';
+  if (c === 'ArrowDown' || k === 'ArrowDown' || k === 'Down') return 'ArrowDown';
+  if (c === 'Enter' || c === 'NumpadEnter' || k === 'Enter') return 'Enter';
+  if (c === 'KeyR' || k === 'r' || k === 'R') return 'r';
+  if (c === 'KeyV' || k === 'v' || k === 'V') return 'v';
+  if (c === 'KeyN' || k === 'n' || k === 'N') return 'n';
+  if (c === 'KeyM' || k === 'm' || k === 'M') return 'm';
+  if (c === 'KeyQ' || k === 'q' || k === 'Q') return 'q';
+  if (c === 'KeyE' || k === 'e' || k === 'E') return 'e';
+  return k;
+}
+let focused = document.hasFocus();
+const typing = e => e.target && e.target.tagName === 'INPUT' && e.target.type === 'text';
+function onDown(e) {
+  if (typing(e)) return;   // man skriver et bynavn – tasterne styrer ikke spillet imens
+  const k = keyName(e);
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Enter'].includes(k)) e.preventDefault();
+  focused = true;
+  try { audio(); } catch (_) {}   // browsere kræver et tastetryk før lyd må afspilles
+  if (e.repeat && k === ' ') return;
+  // et kort tryk drejer sigtet et lille hak med det samme
+  if (state === 'aim' && !e.repeat) {
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) sfx.tick();
+    if (k === 'ArrowLeft') aim -= 0.03;
+    if (k === 'ArrowRight') aim += 0.03;
+    if (k === 'ArrowUp') aim -= 0.005;
+    if (k === 'ArrowDown') aim += 0.005;
+  }
+  keys[k] = true;
+  if (k === ' ' && state === 'aim' && !charging && swingAnim <= 0) {
+    charging = true; power = 0;
+  }
+  if (k === 'Enter') {
+    if (state === 'holed') { holeIdx++; startHole(); }
+    else if (state === 'done') { holeIdx = 0; scores = []; newHoleRecords = []; roundResult = null; msgTime = 0; startHole(); }
+  }
+  if (k === 'r' && state === 'aim' && !charging && swingAnim <= 0 && !e.repeat) backToTee();
+  // Q = længere kølle (mod driveren), E = kortere kølle (mod putteren); hold tasten for at bladre
+  if (k === 'n' && !e.repeat) skipRequest();
+  if (k === 'm' && !e.repeat) { setSoundOff(!soundOff); showMsg(soundOff ? 'Lyd: fra' : 'Lyd: til', 1); }
+  if (k === 'q') setClub(club - 1, true);
+  if (k === 'e') setClub(club + 1, true);
+  if (k === 'v' && !e.repeat) {
+    setWindArrows(!showWindArrows);
+    showMsg(showWindArrows ? 'Vindpile: til' : 'Vindpile: fra', 1);
+  }
+}
+function onUp(e) {
+  if (typing(e)) return;
+  const k = keyName(e);
+  keys[k] = false;
+  if (k === ' ' && charging) {
+    charging = false;
+    if (state === 'aim') shoot();
+  }
+}
+document.addEventListener('keydown', onDown, true);
+document.addEventListener('keyup', onUp, true);
+// mister vinduet fokus midt i en opladning, afbrydes den – ellers ville næste slip af Space slå med fuld kraft
+window.addEventListener('blur', () => {
+  focused = false;
+  for (const k in keys) keys[k] = false;
+  if (charging) { charging = false; power = 0; swing = 0; sfx.chargeStop(); }
+});
+window.addEventListener('focus', () => { focused = true; });
+// klik på spillet giver det tastaturfokus
+cv.tabIndex = 0;
+cv.style.outline = 'none';
+cv.addEventListener('mousedown', () => { cv.focus(); window.focus(); focused = true; });
+cv.focus();
+
+// ---------- Loop ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+startHole();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <title>Mini Golf Slag</title>
+  <rect width="320" height="200" fill="#4f9443"/>
+  <ellipse cx="150" cy="110" rx="130" ry="46" transform="rotate(-12 150 110)" fill="#74c25e" stroke="#8fd37a" stroke-width="2"/>
+  <ellipse cx="128" cy="150" rx="38" ry="18" fill="#62b0e6" stroke="#9ad0f2" stroke-width="2"/>
+  <circle cx="246" cy="74" r="34" fill="#95de78" stroke="#b8ef9f" stroke-width="2"/>
+  <ellipse cx="206" cy="112" rx="18" ry="10" fill="#f5e6b0" stroke="#fff6d6" stroke-width="2"/>
+  <circle cx="92" cy="58" r="15" fill="#3f7d3a" stroke="#5c9d55" stroke-width="2"/>
+  <circle cx="290" cy="150" r="13" fill="#3f7d3a" stroke="#5c9d55" stroke-width="2"/>
+  <path d="M46 132 Q120 30 238 72" fill="none" stroke="#ffffff" stroke-width="2" stroke-dasharray="5 5" opacity="0.8"/>
+  <circle cx="252" cy="78" r="4" fill="#1d2b1f"/>
+  <line x1="252" y1="78" x2="252" y2="40" stroke="#ffffff" stroke-width="2"/>
+  <path d="M252 40 L272 46 L252 52 Z" fill="#e53935"/>
+  <circle cx="46" cy="132" r="5" fill="#ffffff" stroke="#1d2b1f" stroke-width="1"/>
+  <text x="16" y="186" font-family="Segoe UI, sans-serif" font-size="20" font-weight="700" fill="#ffffff">Mini Golf Slag</text>
+</svg>
