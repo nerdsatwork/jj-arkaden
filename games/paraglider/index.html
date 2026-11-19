@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paraglider ved skrænten</title>
+<style>
+/* Ét fast look: sommerhimmel over en kystskrænt. Spillet fylder hele siden, og verden skaleres til at passe. */
+:root {
+  --sky: #9fd0ee;
+  --ink: #12303f;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--sky); color: var(--ink); overflow: hidden;
+  font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif; }
+canvas { display: block; width: 100%; height: 100%; outline: none; }
+canvas:focus-visible { outline: 3px solid #ffffff; outline-offset: -3px; }
+</style>
+</head>
+<body>
+
+<canvas id="spil" tabindex="0" aria-label="Paraglider-spil. Styr med piletasterne, start med mellemrum."></canvas>
+
+<script>
+(() => {
+  const W = 1200, H = 700;
+  const CREST_X = 230, CREST_Y = 300, FOOT_X = 420, BASE_Y = 600, SEA_X = 480, SEA_Y = 612;
+  const FONT = '"Space Grotesk", "Segoe UI", system-ui, sans-serif';
+  const canvas = document.getElementById('spil');
+  const ctx = canvas.getContext('2d');
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let scale = 1, ox = 0, oy = 0, dpr = 1;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+    scale = Math.min(cw / W, ch / H);
+    ox = (cw - W * scale) / 2; oy = (ch - H * scale) / 2;
+  }
+  addEventListener('resize', resize);
+
+  // ---------- Terræn ----------
+  function groundY(x) {
+    if (x <= CREST_X) return CREST_Y + 6 * Math.sin(x / 37) + 4 * Math.sin(x / 13);
+    if (x <= FOOT_X) {
+      const t = (x - CREST_X) / (FOOT_X - CREST_X);
+      return CREST_Y + (BASE_Y - CREST_Y) * (t * t * (3 - 2 * t));
+    }
+    if (x <= SEA_X) return BASE_Y + (x - FOOT_X) * 0.2;
+    return SEA_Y;
+  }
+  // Skræntens forkant i en given højde (lineær tilnærmelse)
+  function faceX(y) {
+    if (y <= CREST_Y) return CREST_X;
+    return CREST_X + (FOOT_X - CREST_X) * Math.min(1, (y - CREST_Y) / (BASE_Y - CREST_Y));
+  }
+  // Opdrift (px/s opad) ved et punkt. Afhænger af vindens styrke og retning (wp = den del af vinden,
+  // der blæser fra havet ind mod skrænten; negativ betyder fralandsvind).
+  function lift(x, y) {
+    return ridgeLift(x, y) + thermal(x, y);
+  }
+  function ridgeLift(x, y) {
+    const d = x - faceX(y);
+    const above = CREST_Y - y;
+    const hf = above <= 0 ? 1 : Math.max(0, 1 - above / 260);
+    if (wp >= 0) {
+      if (d < -30) return -wp * 0.6;                      // læ bag skrænten: synk
+      const f = d <= 150 ? 1 : Math.max(0, 1 - (d - 150) / 250);
+      return wp * 2.2 * f * hf;
+    }
+    // Fralandsvind: luften styrter ned foran skrænten (rotor) med uro, og over toppen er der ingen opdrift
+    if (d < -30) return 0;
+    const s = -wp;
+    const f = d <= 180 ? 1 : Math.max(0, 1 - (d - 180) / 220);
+    const turb = Math.sin(x * 0.045 + t * 3.1) * Math.sin(y * 0.06 - t * 2.3);
+    return (-s * 1.5 + turb * s * 1.1) * f * hf;
+  }
+  // Termik: en søjle af stigende luft under hver sky, stærkest midt under skyen
+  function thermal(x, y) {
+    let sum = 0;
+    for (const c of clouds) {
+      const base = c.y + 20 * c.s;
+      if (y <= base) continue;
+      const w = 55 * c.s, dx = x - c.x;
+      const f = Math.exp(-(dx * dx) / (2 * w * w));
+      sum += c.str * f * Math.min(1, (y - base) / 40);
+    }
+    return sum;
+  }
+
+  // ---------- Tilstand ----------
+  const keys = {};
+  let state = 'start';            // start | play | landed | over
+  let g, t, wind, birds, nextBird, crashText, vario, tops;
+  // Vindretning: windAng = 0 betyder vind direkte fra havet, ±π/2 sidevind, ±π vind fra land
+  let windAng = 0, wp = 26, weather;
+  let best = 0;
+  // Gem og hent via Arkadens arkade.gem() og arkade.hent(). Uden for hallen gemmes intet.
+  function gem(key, val) { try { if (window.arkade && arkade.gem) arkade.gem(key, val); } catch (e) {} }
+  function hent(key, cb) {
+    try {
+      if (!(window.arkade && arkade.hent)) return;
+      const r = arkade.hent(key);
+      if (r && typeof r.then === 'function') r.then(v => { if (v != null) cb(v); }).catch(() => {});
+      else if (r != null) cb(r);
+    } catch (e) {}
+  }
+  hent('paraglider-bedste', v => { best = parseFloat(v) || 0; });
+
+  function reset() {
+    g = { x: 255, y: 235, dir: 1, tilt: 0, bar: 0 };
+    t = 0; wind = 26; birds = []; nextBird = 25; crashText = ''; vario = 0; tops = 0;
+    windAng = 0; wp = wind;
+    weather = { phase: 'rolig', timer: 35 + Math.random() * 15, target: 0 };
+  }
+  reset();
+
+  // Luftpartikler der viser vinden
+  const parts = [];
+  for (let i = 0; i < 140; i++) parts.push({ x: Math.random() * W, y: 40 + Math.random() * 540, len: 8 + Math.random() * 14 });
+  // str = termikkens styrke under skyen (px/s opad midt i søjlen)
+  const clouds = [ { x: 200, y: 90, s: 1.1, str: 45 }, { x: 640, y: 60, s: 0.8, str: 35 }, { x: 980, y: 120, s: 1.3, str: 55 } ];
+  function newCloud(c, fromLeft) {
+    c.x = fromLeft ? -150 : W + 150; c.y = 55 + Math.random() * 75; c.s = 0.8 + Math.random() * 0.6; c.str = 25 + Math.random() * 35;
+  }
+
+  let crashText2 = '';
+  // ---------- Kort over stigende luft ----------
+  // Ét pixel på kortet dækker 20 x 20 i spillets verden. Farven viser, om man stiger eller synker ved normal flyvning.
+  const MAP_CELL = 20, MAP_W = W / MAP_CELL, MAP_H = H / MAP_CELL, MAP_SCALE = 4;
+  const mapCanvas = document.createElement('canvas');
+  mapCanvas.width = MAP_W; mapCanvas.height = MAP_H;
+  const mapCtx = mapCanvas.getContext('2d');
+  const mapImg = mapCtx.createImageData(MAP_W, MAP_H);
+  let showMap = true, mapTimer = 0;
+  hent('paraglider-kort', v => { showMap = v !== 'fra'; });
+  function renderMap() {
+    const d = mapImg.data;
+    for (let j = 0; j < MAP_H; j++) for (let i = 0; i < MAP_W; i++) {
+      const x = (i + 0.5) * MAP_CELL, y = (j + 0.5) * MAP_CELL, k = (j * MAP_W + i) * 4;
+      let r, gr, b;
+      if (y >= groundY(x)) {
+        if (x > SEA_X) { r = 30; gr = 70; b = 110; } else { r = 50; gr = 80; b = 45; }
+      } else {
+        const net = lift(x, y) - 24;           // netto stigning ved normal flyvning
+        if (net >= 0) { const a = Math.min(1, net / 35); r = 20 + 30 * a; gr = 40 + 170 * a; b = 50 + 30 * a; }
+        else { const a = Math.min(1, -net / 30); r = 30 + 190 * a; gr = 40 + 30 * a; b = 50 + 20 * a; }
+      }
+      d[k] = r; d[k + 1] = gr; d[k + 2] = b; d[k + 3] = 255;
+    }
+    mapCtx.putImageData(mapImg, 0, 0);
+  }
+  function toggleMap() {
+    showMap = !showMap;
+    gem('paraglider-kort', showMap ? 'til' : 'fra');
+  }
+
+  function crash(text) {
+    state = 'over'; crashText = text; crashText2 = '';
+    if (t > best) { best = t; gem('paraglider-bedste', String(best)); }
+  }
+
+  // ---------- Vejrskift ----------
+  // rolig -> varsel (vindposen uroer sig) -> drejer -> holder -> drejer tilbage -> rolig
+  const TURN_RATE = 0.16;   // radianer pr. sekund
+  function updateWeather(dt) {
+    const w = weather;
+    w.timer -= dt;
+    const turnTo = (target) => {
+      const diff = target - windAng;
+      windAng += Math.sign(diff) * Math.min(Math.abs(diff), TURN_RATE * dt);
+      return Math.abs(diff) < 0.01;
+    };
+    if (w.phase === 'rolig') {
+      turnTo(Math.sin(t * 0.07) * 0.15);                // lille naturlig variation
+      if (w.timer <= 0) {
+        const r = Math.random(), side = Math.random() < 0.5 ? -1 : 1;
+        let a;
+        if (r < 0.3) a = 0.5 + Math.random() * 0.4;          // skrå vind fra havet
+        else if (r < 0.65) a = 1.3 + Math.random() * 0.35;   // sidevind
+        else a = 2.4 + Math.random() * 0.7;                  // vind fra land
+        w.target = side * a; w.phase = 'varsel'; w.timer = 8;
+      }
+    } else if (w.phase === 'varsel') {
+      if (w.timer <= 0) w.phase = 'drejer';
+    } else if (w.phase === 'drejer') {
+      if (turnTo(w.target)) { w.phase = 'holder'; w.timer = 10 + Math.random() * 8; }
+    } else if (w.phase === 'holder') {
+      if (w.timer <= 0) w.phase = 'tilbage';
+    } else if (w.phase === 'tilbage') {
+      if (turnTo(0)) { w.phase = 'rolig'; w.timer = Math.max(18, 45 - t / 15) + Math.random() * 15; }
+    }
+  }
+  function windName() {
+    const a = Math.abs(windAng);
+    if (a < 0.45) return ['fra havet', '#9ff0a6'];
+    if (a < 1.1) return ['skrå fra havet', '#d8f59a'];
+    if (a < 2.0) return ['sidevind', '#ffd34d'];
+    if (a < 2.6) return ['skrå fra land', '#ffb36b'];
+    return ['fra land', '#ff8f7f'];
+  }
+
+  // ---------- Opdatering ----------
+  function update(dt) {
+    // Vinden skifter mere og mere, jo længere man har fløjet
+    const wobble = Math.min(1, Math.max(0, (t - 15) / 60));
+    const target = 26 + wobble * (11 * Math.sin(t * 0.13) + 5 * Math.sin(t * 0.41 + 1));
+    wind += (Math.max(10, target) - wind) * Math.min(1, dt * 0.8);
+    if (state === 'play') updateWeather(dt);
+    wp = wind * Math.cos(windAng);
+
+    // Partikler (driver med vinden; ved sidevind står de næsten stille i billedet)
+    for (const p of parts) {
+      p.x -= wp * 1.6 * dt;
+      p.y -= lift(p.x, p.y) * 0.9 * dt;
+      if (p.x < -20 || p.x > W + 80 || p.y < 20 || p.y > groundY(p.x) - 4) {
+        p.x = wp >= 0 ? W + Math.random() * 60 : -Math.random() * 60; p.y = 40 + Math.random() * 560;
+        if (p.y > groundY(p.x) - 4) p.y = 60 + Math.random() * 200;
+      }
+    }
+    for (const c of clouds) {
+      c.x -= wp * 0.25 * dt;
+      if (c.x < -150) newCloud(c, false); else if (c.x > W + 150) newCloud(c, true);
+    }
+    mapTimer -= dt;
+    if (showMap && mapTimer <= 0) { renderMap(); mapTimer = 0.2; }
+
+    if (state !== 'play') return;
+    t += dt;
+
+    if (keys.ArrowLeft) g.dir = -1;
+    if (keys.ArrowRight) g.dir = 1;
+    // Speedbar: hold pil op for at træde speedbaren gradvist ud (0-100 %), slip for at trække den ind igen
+    if (keys.ArrowUp && !keys.ArrowDown) g.bar = Math.min(1, g.bar + dt * 1.5);
+    else g.bar = Math.max(0, g.bar - dt * 2.5);
+    let air = 70 + 45 * g.bar, sink = 24 + 22 * g.bar * g.bar;
+    if (keys.ArrowDown) { air = 45; sink = 30; }
+
+    const vx = g.dir * air - wp;
+    const vy = sink - lift(g.x, g.y);
+    g.x += vx * dt; g.y += vy * dt;
+    g.x = Math.max(8, Math.min(W - 8, g.x));
+    if (g.y < 40) g.y = 40;
+    vario += (-vy - vario) * Math.min(1, dt * 3);
+    g.tilt += ((g.dir * (0.06 + 0.1 * g.bar)) - g.tilt) * Math.min(1, dt * 5);
+
+    // Fugle
+    nextBird -= dt;
+    if (t > 25 && nextBird <= 0) {
+      const fromRight = Math.random() < 0.7;
+      birds.push({ x: fromRight ? W + 30 : -30, y: 90 + Math.random() * 260,
+        vx: (fromRight ? -1 : 1) * (60 + Math.random() * 60), flap: Math.random() * 6 });
+      nextBird = Math.max(3, 9 - t / 25) + Math.random() * 2;
+    }
+    for (const b of birds) { b.x += b.vx * dt; b.flap += dt * 10; b.y += Math.sin(b.flap * 0.3) * 8 * dt; }
+    birds = birds.filter(b => b.x > -60 && b.x < W + 60);
+
+    // Sammenstød
+    for (const b of birds) if (Math.hypot(b.x - g.x, b.y - (g.y - 14)) < 22) return crash('Du fløj ind i en fugl');
+    if (g.y >= groundY(g.x) - 5) {
+      if (g.x <= CREST_X + 15) {
+        // Toplanding: blød nok i lodret fart og ikke for hurtigt over jorden (land op mod vinden)
+        if (vy <= 58 && Math.abs(vx) <= 60) {
+          state = 'landed'; tops++; g.y = groundY(g.x) - 5; g.bar = 0; vario = 0; birds = [];
+          return;
+        }
+        crash(Math.abs(vx) > 60 ? 'For hurtig landing' : 'For hård landing');
+        crashText2 = 'Land op mod vinden (' + (wp >= 0 ? '→' : '←') + ') og uden speedbar.';
+        return;
+      }
+      if (g.x < FOOT_X) crash('Du ramte skrænten');
+      else if (g.x < SEA_X) crash('Du landede på stranden');
+      else crash('Du landede i havet');
+    }
+  }
+
+  // ---------- Tegning ----------
+  const fmt = s => { const m = Math.floor(s / 60), r = Math.floor(s % 60); return m + ':' + String(r).padStart(2, '0'); };
+
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#9fd0ee'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+
+    // Himmel og sol
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#5aa9dc'); sky.addColorStop(0.75, '#bfe2f5'); sky.addColorStop(1, '#e8f5fb');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,244,200,0.9)'; ctx.beginPath(); ctx.arc(1050, 90, 36, 0, Math.PI * 2); ctx.fill();
+
+    // Termiksøjler: et svagt lyst skær under hver sky
+    for (const c of clouds) {
+      const w = 55 * c.s, base = c.y + 20 * c.s;
+      const col = ctx.createLinearGradient(c.x - w * 1.6, 0, c.x + w * 1.6, 0);
+      const a = 0.05 + c.str / 600;
+      col.addColorStop(0, 'rgba(255,250,225,0)'); col.addColorStop(0.5, 'rgba(255,250,225,' + a.toFixed(3) + ')');
+      col.addColorStop(1, 'rgba(255,250,225,0)');
+      ctx.fillStyle = col; ctx.fillRect(c.x - w * 1.6, base, w * 3.2, H - base);
+    }
+
+    // Skyer
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (const c of clouds) for (const [dx, dy, r] of [[-40, 6, 26], [-10, -8, 34], [26, 2, 28], [52, 10, 18]]) {
+      ctx.beginPath(); ctx.arc(c.x + dx * c.s, c.y + dy * c.s, r * c.s, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Vind-partikler
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+    for (const p of parts) {
+      const l = lift(p.x, p.y) / (Math.abs(wp) * 2.2 + 20);
+      const len = (wp >= 0 ? 1 : -1) * p.len * Math.max(0.25, Math.abs(wp) / Math.max(wind, 1));
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + len, p.y + l * Math.abs(len) * 0.9); ctx.stroke();
+    }
+
+    // Hav
+    ctx.fillStyle = '#2f7fae'; ctx.fillRect(SEA_X - 20, SEA_Y, W - SEA_X + 20, H - SEA_Y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      for (let x = SEA_X; x <= W; x += 10) {
+        const y = SEA_Y + 14 + i * 20 + Math.sin(x / 30 + performance.now() / (reduceMotion ? 1e9 : 600) + i) * 3;
+        x === SEA_X ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // Strand
+    ctx.fillStyle = '#e6d39a';
+    ctx.beginPath(); ctx.moveTo(FOOT_X - 30, H);
+    for (let x = FOOT_X - 30; x <= SEA_X + 10; x += 5) ctx.lineTo(x, groundY(Math.min(x, SEA_X)) + 2);
+    ctx.lineTo(SEA_X + 10, H); ctx.closePath(); ctx.fill();
+
+    // Skrænt
+    const hill = ctx.createLinearGradient(0, CREST_Y, 0, H);
+    hill.addColorStop(0, '#6fa25a'); hill.addColorStop(1, '#3f6b37');
+    ctx.fillStyle = hill;
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let x = 0; x <= FOOT_X + 6; x += 4) ctx.lineTo(x, groundY(x));
+    ctx.lineTo(FOOT_X + 6, H); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#86b96c'; ctx.lineWidth = 3;
+    ctx.beginPath(); for (let x = 0; x <= CREST_X + 20; x += 4) x ? ctx.lineTo(x, groundY(x)) : ctx.moveTo(x, groundY(x)); ctx.stroke();
+    // Vindpose på kanten
+    const wsx = CREST_X - 30, wsy = groundY(CREST_X - 30);
+    ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(wsx, wsy); ctx.lineTo(wsx, wsy - 34); ctx.stroke();
+    // Vindposen peger med vinden. Ved sidevind peger den ind i billedet og ser kortere ud.
+    // Under et varsel blafrer den uroligt.
+    const c = Math.cos(windAng);
+    const warn = weather && weather.phase === 'varsel' ? Math.sin(performance.now() / 70) * 0.6 : 0;
+    const sockLen = (10 + wind * 0.6) * Math.max(0.3, Math.abs(c)) * (1 - Math.abs(warn) * 0.4);
+    const sx = (c >= 0 ? -1 : 1) * sockLen, droop = warn * 8 + (1 - Math.abs(c)) * 6;
+    ctx.fillStyle = '#ef7d2a';
+    ctx.beginPath(); ctx.moveTo(wsx, wsy - 34); ctx.lineTo(wsx + sx, wsy - 32 + droop); ctx.lineTo(wsx + sx, wsy - 28 + droop); ctx.lineTo(wsx, wsy - 26); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(wsx + sx * 0.4, wsy - 33.2 + droop * 0.4); ctx.lineTo(wsx + sx * 0.6, wsy - 32.8 + droop * 0.6);
+    ctx.lineTo(wsx + sx * 0.6, wsy - 27.2 + droop * 0.6); ctx.lineTo(wsx + sx * 0.4, wsy - 26.8 + droop * 0.4); ctx.closePath(); ctx.fill();
+
+    // Fugle
+    ctx.strokeStyle = '#1f2a30'; ctx.lineWidth = 2.5;
+    for (const b of birds) {
+      const w = Math.sin(b.flap) * 7;
+      ctx.beginPath(); ctx.moveTo(b.x - 12, b.y - w); ctx.quadraticCurveTo(b.x - 5, b.y - 4, b.x, b.y);
+      ctx.quadraticCurveTo(b.x + 5, b.y - 4, b.x + 12, b.y - w); ctx.stroke();
+    }
+
+    drawGlider();
+    ctx.restore();
+    drawHud();
+  }
+
+  function drawGlider() {
+    if (state === 'landed') {
+      // Skærmen ligger på jorden bag piloten, piloten står op
+      ctx.save(); ctx.translate(g.x, g.y + 5);
+      ctx.fillStyle = '#e8483f';
+      ctx.beginPath(); ctx.moveTo(-60, 0); ctx.quadraticCurveTo(-38, -10, -14, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(30,40,50,0.6)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-16, -2); ctx.lineTo(0, -16); ctx.stroke();
+      ctx.fillStyle = '#1d3a4c'; ctx.fillRect(-3, -18, 6, 18);
+      ctx.fillStyle = '#f2c94c'; ctx.beginPath(); ctx.arc(0, -22, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      return;
+    }
+    ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.tilt);
+    // Liner
+    ctx.strokeStyle = 'rgba(30,40,50,0.6)'; ctx.lineWidth = 1;
+    for (const wx of [-26, -12, 12, 26]) { ctx.beginPath(); ctx.moveTo(wx, -40 + Math.abs(wx) * 0.35); ctx.lineTo(0, -4); ctx.stroke(); }
+    // Skærm
+    ctx.fillStyle = '#e8483f';
+    ctx.beginPath(); ctx.moveTo(-32, -28); ctx.quadraticCurveTo(0, -60, 32, -28);
+    ctx.quadraticCurveTo(0, -48, -32, -28); ctx.fill();
+    ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-14, -38); ctx.lineTo(-13, -46); ctx.moveTo(14, -38); ctx.lineTo(13, -46); ctx.stroke();
+    // Pilot
+    ctx.fillStyle = '#1d3a4c'; ctx.beginPath(); ctx.ellipse(0, 2, 5, 7, 0, 0, Math.PI * 2); ctx.fill();
+    // Ben: strakt frem, når speedbaren er trådt ud
+    ctx.strokeStyle = '#1d3a4c'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    const legX = g.dir * (5 + 9 * g.bar), legY = 12 - 4 * g.bar;
+    ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(legX, legY); ctx.stroke();
+    if (g.bar > 0.05) {
+      ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(legX - 3, legY); ctx.lineTo(legX + 3, legY); ctx.stroke();
+    }
+    ctx.fillStyle = '#f2c94c'; ctx.beginPath(); ctx.arc(0, -7, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHud() {
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+    ctx.textBaseline = 'top';
+    // Panel øverst til venstre
+    ctx.fillStyle = 'rgba(12,40,56,0.55)'; roundRect(16, 16, 310, 92, 10); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.font = '700 30px ' + FONT;
+    ctx.fillText(fmt(t), 32, 26);
+    ctx.font = '500 15px ' + FONT; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText('Tid i luften', 120, 36);
+    ctx.fillText('Bedste tid  ' + fmt(best), 32, 70);
+    ctx.fillText('Toplandinger  ' + tops, 180, 70);
+    // Panel øverst til højre: vind og variometer
+    ctx.fillStyle = 'rgba(12,40,56,0.55)'; roundRect(W - 236, 16, 220, 120, 10); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.font = '500 15px ' + FONT;
+    const ms = wind / 4.3;  // omregning til m/s
+    ctx.fillText('Vind  ' + ms.toFixed(1) + ' m/s', W - 220, 30);
+    const [wname, wcol] = windName();
+    ctx.fillStyle = wcol; ctx.fillText(wname, W - 220, 108);
+    // Lille kompas set oppefra: skrænten er den grønne streg, havet er nedad, pilen viser hvor vinden blæser hen
+    const kx = W - 44, ky = 50;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(kx, ky, 20, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#86b96c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(kx - 14, ky - 4); ctx.lineTo(kx + 14, ky - 4); ctx.stroke();
+    ctx.fillStyle = 'rgba(80,160,210,0.6)'; ctx.fillRect(kx - 14, ky + 2, 28, 10);
+    ctx.save(); ctx.translate(kx, ky); ctx.rotate(windAng);
+    ctx.strokeStyle = wcol; ctx.fillStyle = wcol; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(0, 16); ctx.lineTo(0, -10); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -17); ctx.lineTo(-6, -8); ctx.lineTo(6, -8); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    const v = vario / 20;
+    ctx.fillStyle = v >= 0 ? '#9ff0a6' : '#ffb3a7';
+    ctx.font = '700 22px ' + FONT;
+    ctx.fillText((v >= 0 ? '+' : '') + v.toFixed(1) + ' m/s', W - 220, 58);
+    ctx.font = '500 13px ' + FONT; ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillText(state === 'play' && thermal(g.x, g.y) > 12 ? 'termik!' : (v >= 0 ? 'stiger' : 'synker'), W - 220, 84);
+    // Varsel om vindskift øverst i midten
+    const ph = weather.phase;
+    if (state === 'play' && (ph === 'varsel' || ph === 'drejer' || ph === 'tilbage')) {
+      const msg = ph === 'varsel' ? 'Vinden drejer snart. Hold øje med vindposen.' :
+        ph === 'drejer' ? 'Vinden drejer!' : 'Vinden drejer tilbage mod havet';
+      ctx.font = '700 17px ' + FONT;
+      const tw = ctx.measureText(msg).width;
+      ctx.fillStyle = ph === 'tilbage' ? 'rgba(30,90,50,0.8)' : 'rgba(150,60,20,0.85)';
+      roundRect(W / 2 - tw / 2 - 18, 18, tw + 36, 36, 18); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.fillText(msg, W / 2, 27); ctx.textAlign = 'left';
+    }
+    // Speedbar-måler under venstre panel
+    ctx.fillStyle = 'rgba(12,40,56,0.55)'; roundRect(16, 116, 250, 40, 10); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.font = '500 14px ' + FONT;
+    ctx.fillText('Speedbar', 32, 128);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; roundRect(110, 128, 140, 16, 8); ctx.fill();
+    if (g.bar > 0.01) { ctx.fillStyle = '#ffd34d'; roundRect(110, 128, Math.max(16, 140 * g.bar), 16, 8); ctx.fill(); }
+
+    // Kort over stigende luft, nederst til højre
+    const mw = MAP_W * MAP_SCALE, mh = MAP_H * MAP_SCALE, mx = W - 16 - mw, my = H - 16 - mh - 26;
+    if (showMap) {
+      ctx.fillStyle = 'rgba(12,40,56,0.75)'; roundRect(mx - 8, my - 8, mw + 16, mh + 42, 10); ctx.fill();
+      ctx.save(); ctx.globalAlpha = 0.9; ctx.imageSmoothingEnabled = true;
+      roundRect(mx, my, mw, mh, 6); ctx.clip();
+      ctx.drawImage(mapCanvas, mx, my, mw, mh);
+      ctx.restore();
+      const ms = MAP_SCALE / MAP_CELL;
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      for (const c of clouds) { ctx.beginPath(); ctx.ellipse(mx + c.x * ms, my + c.y * ms, 9 * c.s, 4 * c.s, 0, 0, Math.PI * 2); ctx.fill(); }
+      if (state !== 'start') {
+        ctx.fillStyle = '#ffd34d'; ctx.strokeStyle = '#12303f'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(mx + g.x * ms, my + g.y * ms, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      ctx.font = '500 13px ' + FONT; ctx.fillStyle = '#9ff0a6'; ctx.fillText('■ stiger', mx, my + mh + 10);
+      ctx.fillStyle = '#ffb3a7'; ctx.fillText('■ synker', mx + 70, my + mh + 10);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.textAlign = 'right';
+      ctx.fillText('K skjuler kortet', mx + mw, my + mh + 10); ctx.textAlign = 'left';
+    } else {
+      ctx.fillStyle = 'rgba(12,40,56,0.55)'; roundRect(W - 166, H - 50, 150, 34, 10); ctx.fill();
+      ctx.font = '500 13px ' + FONT; ctx.fillStyle = '#ffffff'; ctx.fillText('K viser kortet', W - 150, H - 40);
+    }
+
+    if (state === 'landed') {
+      ctx.fillStyle = 'rgba(12,40,56,0.7)'; roundRect(W / 2 - 260, 150, 520, 130, 16); ctx.fill();
+      ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff';
+      ctx.font = '700 32px ' + FONT; ctx.fillText('Flot toplanding!', W / 2, 172);
+      ctx.font = '500 18px ' + FONT; ctx.fillText('Tiden står stille, mens du står på toppen.', W / 2, 214);
+      ctx.font = '700 18px ' + FONT; ctx.fillStyle = '#ffd34d';
+      ctx.fillText('Tryk på mellemrum for at starte igen', W / 2, 246);
+      ctx.textAlign = 'left';
+    }
+    if (state === 'start' || state === 'over') {
+      ctx.fillStyle = 'rgba(12,40,56,0.7)'; roundRect(W / 2 - 260, H / 2 - 120, 520, 220, 16); ctx.fill();
+      ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff';
+      if (state === 'start') {
+        ctx.font = '700 34px ' + FONT; ctx.fillText('Paraglider ved skrænten', W / 2, H / 2 - 96);
+        ctx.font = '500 17px ' + FONT;
+        const lines = ['Bliv længst muligt i luften.', 'Vinden løfter dig tæt på skrænten.',
+          'Land blødt på toppen op mod vinden for en toplanding.',
+          '← → vend   ↑ speedbar   ↓ bremse   K kort'];
+        lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 - 46 + i * 26));
+      } else {
+        ctx.font = '700 32px ' + FONT; ctx.fillText(crashText, W / 2, H / 2 - 96);
+        ctx.font = '500 20px ' + FONT;
+        ctx.fillText('Tid i luften: ' + fmt(t) + '   Toplandinger: ' + tops, W / 2, H / 2 - 46);
+        ctx.fillText('Bedste tid: ' + fmt(best), W / 2, H / 2 - 18);
+        if (crashText2) { ctx.font = '500 16px ' + FONT; ctx.fillText(crashText2, W / 2, H / 2 + 12); }
+      }
+      ctx.font = '700 18px ' + FONT; ctx.fillStyle = '#ffd34d';
+      ctx.fillText('Tryk på mellemrum for at flyve', W / 2, H / 2 + 62);
+      ctx.textAlign = 'left';
+    }
+  }
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  // ---------- Input ----------
+  function start() {
+    if (state === 'landed') {
+      // Start igen fra kanten af skrænten, samme flyvning fortsætter
+      g.x = CREST_X - 5; g.y = groundY(g.x) - 30; g.dir = 1; g.bar = 0; g.tilt = 0;
+      state = 'play';
+    } else if (state !== 'play') { reset(); state = 'play'; }
+  }
+  addEventListener('keydown', e => {
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Spacebar'].includes(e.key)) e.preventDefault();
+    keys[e.key] = true;
+    if (e.key === ' ' || e.key === 'Spacebar') start();
+    if ((e.key === 'k' || e.key === 'K') && !e.repeat) toggleMap();
+  });
+  addEventListener('keyup', e => { keys[e.key] = false; });
+  addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+  canvas.addEventListener('pointerdown', () => { canvas.focus(); start(); });
+
+  // ---------- Løkke ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    update(dt); draw();
+    requestAnimationFrame(frame);
+  }
+  window.paragliderStatus = () => ({ state, x: Math.round(g.x), y: Math.round(g.y), tops, crashText,
+    windAng: +windAng.toFixed(2), wp: Math.round(wp), phase: weather.phase, timer: +weather.timer.toFixed(1),
+    clouds: clouds.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), str: Math.round(c.str) })) });
+  // Til test: fremkald et vindskift med det samme, fx paragliderVindskift(3) for vind fra land
+  window.paragliderVindskift = (ang) => { weather.phase = 'varsel'; weather.target = ang; weather.timer = 1; };
+  resize(); canvas.focus();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
