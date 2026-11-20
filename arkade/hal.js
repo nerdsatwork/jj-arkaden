@@ -655,12 +655,13 @@
     document.title = `${titel} · Arkaden`;
     sceneTitel.textContent = titel;
     visInfo(null);
-    // Online og med npm start: sandbox="allow-scripts" uden allow-same-origin, så
-    // spillet kan køre, men ikke røre hallen, dens lager eller et andet spil.
+    // Online og med npm start: sandbox="allow-scripts allow-pointer-lock" uden
+    // allow-same-origin, så spillet kan køre og låse musen (fx et skydespil, der
+    // drejer med musen), men ikke røre hallen, dens lager eller et andet spil.
     // Åbnet direkte som fil (file://) kan en sandkasse ikke hente spillets egne
     // filer. Der springes den over; browseren holder stadig hver fil for sig.
     const sandkasse = location.protocol !== "file:";
-    const iframe = el("iframe", { src: kilde, sandbox: sandkasse ? "allow-scripts" : null, title: `Spillet ${titel}` });
+    const iframe = el("iframe", { src: kilde, sandbox: sandkasse ? "allow-scripts allow-pointer-lock" : null, allow: "fullscreen; autoplay; gamepad", scrolling: "no", title: `Spillet ${titel}` });
     iframe.addEventListener("load", () => iframe.focus());
     sceneRamme.replaceChildren(iframe);
     scene.hidden = false;

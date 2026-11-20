@@ -38,6 +38,7 @@ jobs:
           mkdir _site
           cp -r index.html arkade games _site/
           find _site/games -name "*.test.js" -delete
+          node scripts/ramme.js _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

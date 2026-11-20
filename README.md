@@ -36,6 +36,7 @@ games/<dit-spil>/
 - `type` er `action`, `klassiker` eller `rolig`. Det styrer filtrene i hallen.
 - Spillet kører i en sandkasse (iframe) i hallen. Brug `arkade.gem()` og `arkade.hent()` i stedet for `localStorage`, og `arkade.info({ Point: "12" })` til tallene i topbjælken. Se toppen af `arkade/arkade.js`.
 - Spillet må ikke hente filer fra internettet.
+- Spillet ruller aldrig i hallen: er siden større end vinduet, skalerer hallen den ned, så hele spillet kan ses. Musen må gerne låses med `requestPointerLock()`, fx i et skydespil.
 
 ## Læg dit spil i Arkaden
 
