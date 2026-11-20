@@ -2,6 +2,11 @@
 
 Nyeste øverst. Skriv en linje, når du lægger et spil eller en ny feature i hallen.
 
+## 0.1.1 (2026-11-20)
+
+- Musen kan låses i et spil (sandkassen har nu allow-pointer-lock), så fx Counter Shoot kan dreje med musen i hallen.
+- Intet spil ruller i hallens vindue: Arkadens ramme (arkade/ramme.js) lægges ind i hvert spil, når hallen udgives, og skalerer siden ned, hvis den er større end vinduet. Mini Golf Slag og Snake passer nu.
+
 ## 0.1.0 (2026-10-19)
 
 - Spilhallen åbner: forside med Ugens spil, Nyeste og Alle spil, en side pr. spil og en side om at lægge sit eget spil i Arkaden.

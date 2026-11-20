@@ -6,6 +6,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { ROD, bygManifest, manifestFiler } = require("./arkaden.js");
+const { medRamme } = require("./ramme.js");
 
 const PORT = Number(process.env.PORT) || 8080;
 const TYPER = {
@@ -49,6 +50,8 @@ const server = http.createServer((req, res) => {
     // Spil kører i en sandkasse uden egen origin. Den header lader dem stadig
     // hente filer, ligesom GitHub Pages gør.
     res.writeHead(200, { "content-type": TYPER[path.extname(fil).toLowerCase()] || "application/octet-stream", "access-control-allow-origin": "*", "cache-control": "no-store" });
+    // Spillets sider får Arkadens ramme, ligesom på GitHub Pages (se scripts/ramme.js).
+    if (sti.startsWith("/games/") && /\.html?$/i.test(sti)) indhold = medRamme(indhold.toString("utf8"));
     res.end(indhold);
   });
 });
