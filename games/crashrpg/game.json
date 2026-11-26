@@ -1,0 +1,16 @@
+{
+  "titel": "CrashRPG",
+  "beskrivelse": "Demo of a pixel-art space RPG: crash-landed with amnesia, you recover your past one memory at a time. Latest: https://crashrpg.giig.io/",
+  "type": "rolig",
+  "tags": [
+    "rpg",
+    "pixel-art",
+    "space",
+    "exploration",
+    "demo"
+  ],
+  "dato": "2026-11-26",
+  "forfatter": "Stefan (GiiGio)",
+  "start": "index.html",
+  "cover": "cover.svg"
+}
