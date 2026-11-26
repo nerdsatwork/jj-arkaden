@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="da">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bislett Games — 100 meter</title>
+<style>
+*{box-sizing:border-box} body{margin:0;background:#101b19;color:#f3f2e7;font:16px system-ui,sans-serif} main{max-width:1200px;margin:auto;padding:24px} header,.controls{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap} h1{font-size:clamp(2rem,5vw,4rem);margin:0;letter-spacing:-.06em} h2{margin-bottom:8px} p{margin:8px 0} canvas{width:100%;display:block;border-radius:16px;margin:20px 0;background:#345747} .controls,section{background:#23352f;border-radius:14px;padding:16px;margin-top:12px} button{font:inherit;font-weight:700;background:#d5f263;color:#152019;padding:10px 18px;border:0;border-radius:8px;cursor:pointer} button:disabled{opacity:.45;cursor:default} kbd{padding:2px 6px;border:1px solid #a9b7a9;border-radius:4px} meter{width:110px} table{width:100%;border-collapse:collapse;text-align:left} td,th{padding:8px;border-bottom:1px solid #466056} tr.you{color:#d5f263} #signal{font-size:1.3rem;font-weight:700} .sub{color:#c5d0c6} [hidden]{display:none!important}
+input{font:inherit;padding:9px;border:1px solid #748d81;border-radius:8px;background:#152822;color:inherit;max-width:170px} form{display:flex;gap:8px;align-items:end;flex-wrap:wrap} form label{display:grid;gap:4px} .table-scroll{overflow-x:auto} #records td,#records th{white-space:nowrap}
+#online{overflow:hidden} #online form{margin:12px 0} #invite img{display:block;width:148px;background:white;margin:10px 0} #invite a{color:#d5f263;overflow-wrap:anywhere} #mp-lanes{display:grid;gap:2px;margin:12px 0} .mp-lane{position:relative;height:38px;background:#9a4332;border-block-end:1px solid #ebc7ab;overflow:hidden} .mp-lane strong{position:absolute;left:8px;top:8px;z-index:1;text-shadow:0 1px 4px #251810} .mp-path{position:absolute;inset:0 5% 0 28%;border-inline:2px solid #f9e6d2} .mp-runner{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:#f5ece0;transform:translate(-50%,-50%);transition:left .14s linear} .mp-lane.mine .mp-runner{background:#d5f263} #touch{display:flex;gap:12px;margin:14px 0} #touch button{flex:1;min-height:64px;touch-action:manipulation;user-select:none}
+#mp-lanes{position:relative;max-height:min(48vh,25rem);overflow-y:auto}
+.mp-lane strong{max-width:27%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (hover:hover) and (pointer:fine){
+  #mp-lanes{max-height:none;overflow-y:visible}
+  #mp-lanes.many-lanes .mp-lane{height:26px}
+  #mp-lanes.many-lanes .mp-lane strong{top:50%;transform:translateY(-50%)}
+}
+main {
+  padding: clamp(16px, 4vw, 36px);
+}
+.game-header {
+  display: grid;
+  justify-content: start;
+  justify-items: start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.game-header h1 {
+  font-size: clamp(1.9rem, 5vw, 3.15rem);
+  line-height: 1.08;
+  letter-spacing: -.045em;
+}
+.mode-switch,
+.discipline-tabs {
+  display: flex;
+  gap: 4px;
+}
+.mode-switch {
+  max-width: 100%;
+  padding: 4px;
+  background: #162420;
+  border: 1px solid #364b42;
+  border-radius: 12px;
+}
+.mode-switch button,
+.discipline-tabs button {
+  min-height: 44px;
+  padding: 8px clamp(10px, 2.5vw, 16px);
+  background: transparent;
+  color: #ced9cf;
+  font-size: .9375rem;
+}
+.mode-switch button {
+  border: 1px solid transparent;
+}
+.mode-switch button[aria-pressed="true"] {
+  background: #253832;
+  border-color: #a9c45d;
+  color: #f3f2e7;
+}
+.discipline-tabs {
+  margin-bottom: 12px;
+  border-bottom: 1px solid #364b42;
+}
+.discipline-tabs button {
+  border-radius: 6px 6px 0 0;
+  border-bottom: 3px solid transparent;
+}
+.discipline-tabs button[aria-pressed="true"] {
+  border-bottom-color: #d5f263;
+  color: #f3f2e7;
+}
+.mode-switch button:hover:not(:disabled),
+.discipline-tabs button:hover:not(:disabled) {
+  background: #293e36;
+}
+button:focus-visible {
+  outline: 2px solid #d5f263;
+  outline-offset: 2px;
+}
+#stadium {
+  margin-top: 0;
+}
+.race-view {
+  position: relative;
+}
+#skip-intro {
+  position: absolute;
+  z-index: 2;
+  top: 7%;
+  right: 4%;
+  padding: 6px 12px;
+  font-size: clamp(.75rem, 2.2vw, 1rem);
+}
+#intro-closeup {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: linear-gradient(90deg, #101e2240, #101e2299);
+}
+#intro-portrait, #intro-avatar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 45%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+}
+#intro-photo-credit {
+  position: absolute;
+  left: 1%;
+  bottom: 2%;
+  max-width: 43%;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #101e22;
+  color: #f3f2e7;
+  font-size: clamp(.6rem, 1.6vw, .8rem);
+}
+#intro-card {
+  position: absolute;
+  right: 4%;
+  bottom: 9%;
+  width: min(52%, 24rem);
+  padding: clamp(6px, 1.5vw, 18px);
+  border-inline-start: 4px solid var(--lane-color);
+  border-radius: 8px;
+}
+#intro-card p {
+  margin: 0;
+  font-size: clamp(.72rem, 2.2vw, 1rem);
+}
+#intro-name {
+  display: block;
+  margin: .12em 0;
+  font: clamp(1rem, 3.8vw, 2.5rem)/1.1 Impact, "Arial Black", sans-serif;
+  overflow-wrap: anywhere;
+}
+#intro-best {
+  color: #d5f263;
+  font-family: ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+#throw-field {
+  background: url("javelin-stadium.jpg") center / cover no-repeat, #345747;
+}
+#throwing h2,
+#online h2 {
+  margin-top: 0;
+}
+h1, h2, h3 {
+  font-family: Impact, "Arial Black", sans-serif;
+  font-weight: 400;
+  letter-spacing: .025em;
+}
+.scoreboard {
+  background: #101e22;
+  color: #f3f2e7;
+  border: 1px solid #3b6870;
+}
+.scoreboard th {
+  color: #9debf3;
+}
+#ranking td:last-child,
+#record-rows td:nth-child(n+3),
+#mp-ranking td:nth-child(n+3),
+#summary, #velocity, #splits, #comparison,
+#throw-stats, #throw-result, #throw-records li {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+#throw-stats, #throw-result, #throw-records {
+  background: #101e22;
+  border-radius: 6px;
+  padding: 8px 12px;
+  border-inline-start: 3px solid #6adbd8;
+}
+#throw-result:empty, #throw-records:empty { display: none; }
+#throw-records { padding-inline-start: 2.5rem; }
+#mp-stands {
+  margin: 12px 0 0;
+  border-radius: 12px 12px 0 0;
+  min-height: 64px;
+  object-fit: cover;
+}
+#mp-lanes {
+  margin-top: 0;
+  border-top: 4px solid #587a42;
+  border-radius: 0 0 10px 10px;
+}
+.stadium-weather-caption { display: none; }
+@media (max-width: 700px) {
+  .stadium-weather-caption {
+    display: block;
+    color: #d7e8ef;
+    font-size: .875rem;
+    margin-top: 8px;
+  }
+}
+.mp-lane:nth-child(even) { background: #a34a36; }
+.mp-lane.mine { background: #b45138; }
+.mp-runner, .mp-lane.mine .mp-runner {
+  width: 36px;
+  height: 32px;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.mp-path { right: max(11%, 35px); }
+.many-lanes .mp-runner { width: 29px; height: 25px; }
+@media (prefers-reduced-motion: reduce) {
+  .mp-runner { transition: none; }
+}
+</style>
+<main>
+<header class="game-header">
+<h1>Bislett Games</h1>
+
+</header>
+<div id="offline">
+<nav class="discipline-tabs" aria-label="Discipliner">
+<button id="run-tab" type="button" aria-pressed="true">100 meter</button>
+<button id="throw-tab" type="button" aria-pressed="false">Spydkast</button>
+</nav>
+<div id="running"><div class="race-view">
+<canvas id="stadium" data-stadium-weather width="1120" height="540" role="img" aria-label="Stadion med seks løbebaner. Du løber i bane 3."></canvas>
+<div id="intro-closeup" hidden>
+<canvas id="intro-avatar" width="420" height="450" aria-hidden="true"></canvas>
+<img id="intro-portrait" alt="" hidden>
+<a id="intro-photo-credit" target="_blank" rel="noopener" hidden></a>
+</div>
+<button id="skip-intro" type="button" hidden>Spring intro over</button>
+<div id="intro-card" class="scoreboard" role="status" aria-atomic="true" hidden>
+<p id="intro-lane"></p><strong id="intro-name"></strong><p id="intro-best"></p>
+</div>
+</div>
+<div class="controls">
+<div><div id="signal" role="status">Klar til start?</div><p class="sub">Løb i bane 3. Skift mellem <kbd>A</kbd> og <kbd>D</kbd> efter startsignalet.</p></div>
+<label>Fart <meter id="speed" min="0" max="12" value="0"></meter> <output id="velocity">0,0 m/s</output></label>
+<form id="entry"><label for="runner-name">Spillernavn <input id="runner-name" required maxlength="32" autocomplete="off"></label><button id="start">Start heat</button></form>
+<label><input id="start-sound" type="checkbox"> Slå startlyd fra</label>
+</div>
+<section id="results" class="scoreboard" hidden>
+<h2>Resultater</h2>
+<p id="summary"></p><strong id="new-pr" hidden>NEW PR</strong>
+<table><thead><tr><th scope="col">Plads</th><th scope="col">Løber</th><th scope="col">Tid</th></tr></thead><tbody id="ranking"></tbody></table>
+<p id="splits"></p><p id="comparison"></p>
+</section>
+<section id="records" class="scoreboard">
+<h2>Rekordtavle</h2>
+<p id="record-status" role="status"></p>
+<div class="table-scroll"><table id="record-table" hidden><thead><tr><th scope="col">Plads</th><th scope="col">Spiller</th><th scope="col">Sluttid</th><th scope="col">Reaktionstid</th><th scope="col">25 m</th><th scope="col">50 m</th><th scope="col">75 m</th><th scope="col">Fartmodel</th></tr></thead><tbody id="record-rows"></tbody></table></div>
+</section>
+</div>
+<section id="throwing" hidden>
+<h2>Spydkast</h2>
+<p>Vælg vinklen med ↑ og ↓ før tilløbet. Skift mellem A og D for at få fart, og tryk mellemrum lige før kastelinjen.</p>
+<form id="throw-entry"><label>Spillernavn <input id="throw-name" required maxlength="32" autocomplete="off"></label><button id="throw-start">Start kast</button><button id="throw-abort" type="button" hidden>Afbryd</button></form>
+<canvas id="throw-field" data-stadium-weather width="800" height="320" role="img" aria-label="Spydkastbane med tilløb, kastelinje og afstandsmarkeringer i landingsfeltet"></canvas>
+<p id="throw-stats"></p>
+<label>Tilløb <progress id="runway" max="24" value="0"></progress> Kastelinje</label>
+<p id="throw-result" role="status"></p>
+<h3>Rekordtavle for spydkast</h3>
+<ol id="throw-records"></ol>
+</section>
+</div>
+</main>
+<script src="stadium-weather.js"></script>
+<script src="portraits.js"></script>
+<script src="portraits-extra.js"></script>
+<script src="javelin.js" defer></script>
+<script src="game.js"></script>
+</html>

@@ -1,0 +1,14 @@
+{
+    "start":  "index.html",
+    "tags":  [
+                 "atletik",
+                 "100 meter",
+                 "spydkast"
+             ],
+    "type":  "action",
+    "cover":  "cover.svg",
+    "dato":  "2026-11-26",
+    "titel":  "Bislett Games",
+    "beskrivelse":  "Løb 100 meter mod computeren, eller tag tilløb til et spydkast på Bislett.",
+    "forfatter":  "Usain Bolt"
+}

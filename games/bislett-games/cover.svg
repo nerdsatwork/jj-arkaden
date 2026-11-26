@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Bislett Games">
+  <path fill="#23362f" d="M0 0h640v360H0z"/>
+  <path fill="#a94834" d="M0 184h640v176H0z"/>
+  <path fill="none" stroke="#f5e5ca" stroke-width="3" d="M0 222h640M0 270h640M0 318h640M510 184v176"/>
+  <path stroke="#e9f575" stroke-width="5" stroke-linecap="round" d="m390 214 176-98"/>
+  <path fill="#e9f575" d="m570 113-13 16-7-12z"/>
+  <g fill="#faf1dc" font-family="system-ui,sans-serif" font-weight="900" font-size="66">
+    <text x="42" y="91">BISLETT</text>
+    <text x="42" y="156">GAMES</text>
+  </g>
+  <text fill="#fff1d4" x="42" y="255" font-family="system-ui,sans-serif" font-weight="700" font-size="23">100 METER · SPYDKAST</text>
+</svg>
