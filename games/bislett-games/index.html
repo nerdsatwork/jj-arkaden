@@ -240,7 +240,7 @@ h1, h2, h3 {
 <div class="controls">
 <div><div id="signal" role="status">Klar til start?</div><p class="sub">Løb i bane 3. Skift mellem <kbd>A</kbd> og <kbd>D</kbd> efter startsignalet.</p></div>
 <label>Fart <meter id="speed" min="0" max="12" value="0"></meter> <output id="velocity">0,0 m/s</output></label>
-<form id="entry"><label for="runner-name">Spillernavn <input id="runner-name" required maxlength="32" autocomplete="off"></label><button id="start">Start heat</button></form>
+<form id="entry"><label for="runner-name">Spillernavn <input id="runner-name" required maxlength="32" autocomplete="off"></label><button id="start" type="button">Start heat</button></form>
 <label><input id="start-sound" type="checkbox"> Slå startlyd fra</label>
 </div>
 <section id="results" class="scoreboard" hidden>
@@ -258,7 +258,7 @@ h1, h2, h3 {
 <section id="throwing" hidden>
 <h2>Spydkast</h2>
 <p>Vælg vinklen med ↑ og ↓ før tilløbet. Skift mellem A og D for at få fart, og tryk mellemrum lige før kastelinjen.</p>
-<form id="throw-entry"><label>Spillernavn <input id="throw-name" required maxlength="32" autocomplete="off"></label><button id="throw-start">Start kast</button><button id="throw-abort" type="button" hidden>Afbryd</button></form>
+<form id="throw-entry"><label>Spillernavn <input id="throw-name" required maxlength="32" autocomplete="off"></label><button id="throw-start" type="button">Start kast</button><button id="throw-abort" type="button" hidden>Afbryd</button></form>
 <canvas id="throw-field" data-stadium-weather width="800" height="320" role="img" aria-label="Spydkastbane med tilløb, kastelinje og afstandsmarkeringer i landingsfeltet"></canvas>
 <p id="throw-stats"></p>
 <label>Tilløb <progress id="runway" max="24" value="0"></progress> Kastelinje</label>

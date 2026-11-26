@@ -639,8 +639,19 @@ document.addEventListener("keydown", event => {
   lastKey = key;
 });
 
-get("entry").addEventListener("submit", event => {
-  event.preventDefault();
+// Arkaden's sandbox blocks form submission.
+function bindStart(button, input, start) {
+  button.addEventListener("click", () => {
+    if (input.reportValidity()) start();
+  });
+  input.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || event.isComposing || event.repeat) return;
+    event.preventDefault();
+    button.click();
+  });
+}
+
+bindStart(button, nameInput, () => {
   const name = nameInput.value.trim();
   if (!name) {
     cue("Skriv dit navn før start.");

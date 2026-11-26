@@ -371,8 +371,7 @@ function javelinRunningPose(distance, speed, motionReduced) {
     else runFrame = requestAnimationFrame(tick);
   }
 
-  get("throw-entry").addEventListener("submit", event => {
-    event.preventDefault();
+  bindStart(start, input, () => {
     name = input.value.trim();
     if (!name || active) return;
     cancelAnimationFrame(flightFrame);
