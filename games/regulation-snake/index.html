@@ -1,0 +1,1360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regulation Snake</title>
+<style>
+  :root { /* 1980s synthwave neon */
+    --bg: #0a0320;
+    --panel: #170a36;
+    --border: #6d28d9;
+    --fg: #f3e8ff;
+    --muted: #a89bd6;
+    --accent: #39ffb0;
+    --danger: #ff3b6b;
+    --gold: #ffe14d;
+    --pink: #ff2bd6;
+    --cyan: #22e5ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 16px;
+    background: radial-gradient(ellipse at 50% 110%, #3a0b5e 0%, #160532 45%, var(--bg) 75%) fixed var(--bg);
+    color: var(--fg);
+    font-family: "Courier New", ui-monospace, monospace;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 {
+    font-family: "Arial Black", "Segoe UI Black", Impact, sans-serif; font-style: italic;
+    font-size: clamp(22px, 6.4vw, 38px); letter-spacing: 4px; margin: 4px 0 2px;
+    color: #ffe6fb;
+    text-shadow: 0 0 2px #fff, 0 0 8px var(--pink), 0 0 18px var(--pink), 0 0 34px #7c3aed, 3px 3px 0 #22e5ff66;
+    animation: neon-flicker 7s infinite;
+  }
+  .tagline { color: var(--cyan); font-size: 13px; margin: 0 0 10px; text-align: center; letter-spacing: 1px; text-shadow: 0 0 6px #22e5ff99; }
+  .hud {
+    width: min(600px, 100%); display: flex; justify-content: space-between;
+    align-items: center; gap: 8px; margin-bottom: 8px; font-size: 16px;
+    font-weight: bold; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan);
+    text-shadow: 0 0 6px #22e5ff88;
+  }
+  .hud b { color: var(--gold); text-shadow: 0 0 4px #ffe14d, 0 0 12px #ff9f1c; font-variant-numeric: tabular-nums; }
+  .hud .btns { display: flex; gap: 6px; }
+  button {
+    font: inherit; cursor: pointer; background: rgba(23,10,54,.85); color: var(--fg);
+    border: 2px solid var(--cyan); border-radius: 6px; padding: 6px 12px;
+    box-shadow: 0 0 6px #22e5ff88, inset 0 0 6px #22e5ff44;
+  }
+  button:hover, button:focus-visible { border-color: var(--pink); box-shadow: 0 0 10px var(--pink), inset 0 0 8px #ff2bd666; outline: none; }
+  button.primary {
+    background: linear-gradient(180deg, #ff5fe0, #c21aa8); color: #fff; border-color: #ffb3f1; font-weight: bold;
+    letter-spacing: 1px; text-shadow: 0 0 4px #7a0066; box-shadow: 0 0 10px var(--pink), 0 0 22px #ff2bd666;
+  }
+  button.primary:hover, button.primary:focus-visible { border-color: #fff; box-shadow: 0 0 14px var(--pink), 0 0 30px #ff2bd699; }
+  .stage {
+    position: relative; width: min(600px, 100%); aspect-ratio: 1; border-radius: 8px;
+    box-shadow: 0 0 12px #ff2bd6aa, 0 0 34px #7c3aed88;
+  }
+  canvas#game {
+    width: 100%; height: 100%; display: block;
+    border: 3px solid var(--pink); border-radius: 8px; background: #0b0221; touch-action: none;
+  }
+  /* CRT: static scanlines + light vignette, purely visual (clicks pass through) */
+  .stage::before, .stage::after {
+    content: ""; position: absolute; inset: 0; border-radius: 8px; pointer-events: none; z-index: 2;
+  }
+  .stage::before {
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px);
+    animation: crt-flicker 6s infinite;
+  }
+  .stage::after { background: radial-gradient(ellipse at center, transparent 58%, rgba(5,0,20,.55) 100%); }
+  @keyframes neon-flicker {
+    0%, 91%, 93%, 95%, 100% { opacity: 1; }
+    92%, 94% { opacity: .55; }
+  }
+  @keyframes crt-flicker { 0%, 100% { opacity: .85; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    h1, .stage::before { animation: none; }
+  }
+  .overlay {
+    position: absolute; inset: 0; display: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px; padding: 16px;
+    background: linear-gradient(180deg, rgba(10,3,32,.93), rgba(34,6,58,.93)); border-radius: 8px;
+    text-align: center; overflow: auto; z-index: 1;
+    box-shadow: inset 0 0 40px #7c3aed66;
+  }
+  .overlay.show { display: flex; }
+  .overlay h2 {
+    margin: 0; font-family: "Arial Black", "Segoe UI Black", Impact, sans-serif; font-style: italic;
+    font-size: clamp(20px, 5vw, 30px); color: #fff6c2; letter-spacing: 3px;
+    text-shadow: 0 0 2px #fff, 0 0 8px var(--gold), 0 0 20px #ff9f1c, 0 0 32px var(--pink);
+  }
+  .overlay p { margin: 2px 0; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; text-align: left; font-size: 13px; }
+  .legend h3 { margin: 2px 0; font-size: 14px; letter-spacing: 2px; }
+  .legend .col { display: flex; flex-direction: column; gap: 3px; }
+  .legend .row { display: flex; align-items: center; gap: 8px; }
+  .legend img { width: 48px; height: 48px; flex: none; }
+  .good { color: var(--accent); text-shadow: 0 0 6px #39ffb099; }
+  .bad { color: var(--danger); text-shadow: 0 0 6px #ff3b6b99; }
+  .hint { color: var(--muted); font-size: 12px; }
+  #deathMsg { color: var(--danger); font-size: 16px; max-width: 420px; text-shadow: 0 0 8px #ff3b6b88; }
+  form#nameForm { display: flex; gap: 6px; }
+  form#nameForm input {
+    font: inherit; background: #0b0221; color: var(--fg); border: 2px solid var(--cyan);
+    border-radius: 6px; padding: 6px 8px; width: 160px; box-shadow: 0 0 6px #22e5ff66;
+  }
+  form#nameForm input:focus { outline: none; border-color: var(--pink); box-shadow: 0 0 10px var(--pink); }
+  ol#scoreList { margin: 4px 0; padding-left: 28px; text-align: left; font-size: 14px; min-width: 220px; }
+  ol#scoreList li.me { color: var(--gold); font-weight: bold; text-shadow: 0 0 6px #ffe14d99; }
+  ol#scoreList span.pts { float: right; margin-left: 16px; }
+  .fact { color: var(--muted); font-size: 13px; font-style: italic; max-width: 420px; }
+  .fact:empty, #fineMsg:empty { display: none; }
+  footer { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; max-width: 600px; }
+</style>
+</head>
+<body>
+  <h1>REGULATION SNAKE</h1>
+  <p class="tagline">Move fast. Eat things. Avoid Brussels.</p>
+
+  <div class="hud">
+    <div>Score: <b id="score">0</b> &nbsp; Best: <b id="best">0</b></div>
+    <div class="btns">
+      <button id="pauseBtn" title="Pause (Space)">⏸</button>
+      <button id="muteBtn" title="Sound on/off (M)">🔊</button>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="game"></canvas>
+
+    <div class="overlay show" id="startOv">
+      <h2>REGULATION SNAKE</h2>
+      <div class="legend" id="legend"></div>
+      <p class="hint">Arrows / WASD to move · Space = pause · M = mute · Edges wrap around</p>
+      <button class="primary" id="startBtn">START (Enter)</button>
+    </div>
+
+    <div class="overlay" id="pauseOv">
+      <h2>PAUSED</h2>
+      <p class="hint">Lobbying in progress… Press Space to continue.</p>
+      <p class="fact" id="pauseFact"></p>
+    </div>
+
+    <div class="overlay" id="overOv">
+      <h2>GAME OVER</h2>
+      <p id="deathMsg"></p>
+      <p class="hint" id="fineMsg"></p>
+      <p>Score: <b id="finalScore" style="color:var(--gold)">0</b></p>
+      <form id="nameForm">
+        <input id="nameInput" maxlength="12" placeholder="Your name" autocomplete="off">
+        <button class="primary" type="submit">Save</button>
+      </form>
+      <p class="hint" id="qualifyHint"></p>
+      <ol id="scoreList"></ol>
+      <p class="fact" id="overFact"></p>
+      <button class="primary" id="againBtn">PLAY AGAIN (Enter)</button>
+    </div>
+  </div>
+
+  <footer>Satire. All characters are drawn parodies. No data leaves your browser – high scores are stored locally only.<br>
+    Caricatures drawn after photos: Trump – official portrait by Daniel Torok/White House (public domain);
+    von der Leyen – European People's Party, <a href="https://creativecommons.org/licenses/by/2.0/" style="color:inherit">CC BY 2.0</a>.<br>
+    Fun facts based on <a href="https://en.wikipedia.org/" style="color:inherit">Wikipedia</a> (CC BY-SA 4.0), rewritten. Exchange rates as of 25 Nov 2026.</footer>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Config ----------
+  const COLS = 15, ROWS = 15, CELL = 40;           // logical board: 600 x 600
+  const MAX_RES = 3;                                // cap for backing-store scale (devicePixelRatio x CSS size)
+  const SPRITE_PAD = 8;                             // sprites drawn larger than a cell (room for the baked neon glow)
+  const HS_KEY = 'regulationSnake.highscores';
+  const MUTE_KEY = 'regulationSnake.muted';
+  const NAME_KEY = 'regulationSnake.lastName';
+  const MAX_TRAPS = 12;
+
+  // Optional real voice clips (mp3/ogg/wav next to index.html, e.g. in a "sounds" folder).
+  // Each entry is either a short file:            'sounds/trump.mp3'
+  // or a segment of a long recording (seconds):  { src: 'sounds/trump-speech.ogg', start: 754.2, end: 755.4 }
+  // The text is shown in the pop-up and used as text-to-speech fallback if the clip can't play.
+  // A random clip from the list is used each time.
+  const VOICE_CLIPS = {
+    trump: [
+      // { src: 'sounds/trump-2020.ogg', start: 49.32, end: 51.30, text: 'Big media, big money, and big tech!' },
+    ],
+    vdl: [
+      // { src: 'sounds/vdl.ogg', start: 68.82, end: 71.82, text: 'A package of massive and targeted sanctions.' },
+    ],
+  };
+
+  // Arkaden build: no embedded voice clips, browser text-to-speech is used instead.
+  const EMBEDDED_CLIPS = {};
+
+  // ---------- Vector art (SVG, 64x64 viewBox) ----------
+  function starPts(cx, cy, R, r = R * 0.42) {
+    const p = [];
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r : R;
+      p.push((cx + rr * Math.cos(a)).toFixed(2) + ',' + (cy + rr * Math.sin(a)).toFixed(2));
+    }
+    return p.join(' ');
+  }
+  const euStars = (cx, cy, rad, size) => Array.from({ length: 12 }, (_, i) => {
+    const a = i * Math.PI / 6;
+    return `<polygon points="${starPts(cx + rad * Math.cos(a), cy + rad * Math.sin(a), size)}" fill="#ffcc00"/>`;
+  }).join('');
+  const chipPins = () => {
+    let s = '';
+    for (let i = 0; i < 5; i++) {
+      const p = 17 + i * 7.5;
+      s += `<rect x="${p - 1.6}" y="4" width="3.2" height="9" rx="1" fill="url(#pin)"/>`;
+      s += `<rect x="${p - 1.6}" y="51" width="3.2" height="9" rx="1" fill="url(#pin)"/>`;
+      s += `<rect x="4" y="${p - 1.6}" width="9" height="3.2" rx="1" fill="url(#pin)"/>`;
+      s += `<rect x="51" y="${p - 1.6}" width="9" height="3.2" rx="1" fill="url(#pin)"/>`;
+    }
+    return s;
+  };
+  const chipVias = () => [22, 32, 42].map(p =>
+    `<circle cx="14" cy="${p}" r=".9"/><circle cx="50" cy="${p}" r=".9"/><circle cx="${p}" cy="14" r=".9"/><circle cx="${p}" cy="50" r=".9"/>`
+  ).join('');
+  const pearls = () => {
+    let s = '';
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12, x = 25 + t * 14, y = 44.5 + Math.sin(t * Math.PI) * 5;
+      s += `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.15" fill="url(#prl)"/>`;
+    }
+    return s;
+  };
+  const capRidges = () => { // vertical grip ridges on the cap's curved side
+    let s = '';
+    for (let x = 9; x <= 39; x += 2.5) {
+      const e = 10 * Math.sqrt(Math.max(0, 1 - ((x - 24) / 17) ** 2));
+      s += `<path d="M${x} ${(24 + e).toFixed(2)} V${(33 + e).toFixed(2)}" stroke="#172f73" stroke-width=".8" opacity=".75"/>`;
+    }
+    return s;
+  };
+  const bricks = () => {
+    let s = '';
+    const h = 13.5;
+    for (let r = 0; r < 4; r++) {
+      const y = 5 + r * h;
+      for (let x = r % 2 ? -9 : 3; x < 61; x += 24) {
+        const x0 = Math.max(3, x), x1 = Math.min(61, x + 24);
+        s += `<rect x="${x0 + 0.8}" y="${y + 0.8}" width="${x1 - x0 - 1.6}" height="${h - 1.6}" rx="1.2" fill="url(#brk)"/>`
+          + `<path d="M${x0 + 1.8} ${y + 1.7} H${x1 - 1.8}" stroke="#e4e7ee" stroke-width=".9" opacity=".7"/>`;
+      }
+    }
+    return s;
+  };
+  const F = 'font-family="Arial,Helvetica,sans-serif" font-weight="900" text-anchor="middle"';
+
+  // Caricatures are drawn freely after reference photos (credited in the footer); no photo data is embedded.
+  const ART = {
+    trump: `
+      <defs>
+        <radialGradient id="sk" cx=".45" cy=".38" r=".7"><stop offset="0" stop-color="#ffc28a"/><stop offset=".6" stop-color="#f0974f"/><stop offset="1" stop-color="#c4642b"/></radialGradient>
+        <linearGradient id="hr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffbe0"/><stop offset=".5" stop-color="#f4d77e"/><stop offset="1" stop-color="#c69a3e"/></linearGradient>
+        <linearGradient id="st" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f4a8f"/><stop offset="1" stop-color="#101a3d"/></linearGradient>
+        <linearGradient id="te" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff4b4b"/><stop offset="1" stop-color="#b0101e"/></linearGradient>
+      </defs>
+      <path d="M2 64 Q3 49 19 45.5 L32 51 L45 45.5 Q61 49 62 64Z" fill="url(#st)"/>
+      <path d="M22 45 L32 61 L42 45 L37.5 43.5 L32 48 L26.5 43.5Z" fill="#f8fafc"/>
+      <path d="M26.5 43.5 L32 48 L29.5 51 L24 46Z M37.5 43.5 L32 48 L34.5 51 L40 46Z" fill="#e2e8f0" stroke="#94a3b8" stroke-width=".5"/>
+      <path d="M20 45.6 L30.6 60 L27 64 M44 45.6 L33.4 60 L37 64" stroke="#0a1230" stroke-width="1.3" fill="none"/>
+      <path d="M29.6 47.6 h4.8 l-.9 3.3 h-3z" fill="#c8141f"/>
+      <path d="M30.6 50.6 h2.8 l2.6 10.4 -4 3 -4 -3z" fill="url(#te)"/>
+      <path d="M31.5 52 l-.9 8" stroke="#ff9a9a" stroke-width=".7" opacity=".8"/>
+      <g transform="translate(43.5 52.5) rotate(-12)"><rect width="4.6" height="3.2" fill="#f8fafc"/>
+        <path d="M0 .45h4.6M0 1.35h4.6M0 2.25h4.6M0 3.05h4.6" stroke="#dc2626" stroke-width=".45"/><rect width="2" height="1.6" fill="#1e3a8a"/></g>
+      <path d="M26.5 37 h11 v9 q-5.5 3 -11 0z" fill="#cf7438"/>
+      <ellipse cx="16.8" cy="31.5" rx="2.9" ry="4.6" fill="#e88a48"/><ellipse cx="47.2" cy="31.5" rx="2.9" ry="4.6" fill="#e88a48"/>
+      <path d="M16.5 30 q1 -1.5 1.4 1.5 M47.5 30 q-1 -1.5 -1.4 1.5" stroke="#b25a26" stroke-width=".7" fill="none"/>
+      <path d="M17.6 27 Q17.4 16.5 32 16 Q46.6 16.5 46.4 27 L46.4 33 Q46.6 40.5 41.2 43.8 Q36.6 46.6 32 46.6 Q27.4 46.6 22.8 43.8 Q17.4 40.5 17.6 33Z" fill="url(#sk)"/>
+      <ellipse cx="25.6" cy="28.8" rx="4.8" ry="2.9" fill="#ffe0bd" opacity=".45"/><ellipse cx="38.4" cy="28.8" rx="4.8" ry="2.9" fill="#ffe0bd" opacity=".45"/>
+      <path d="M20.6 26.1 Q25 23.4 29.6 25.3 M34.4 25.3 Q39 23.4 43.4 26.1" stroke="#e9c873" stroke-width="2.3" fill="none" stroke-linecap="round"/>
+      <path d="M30.9 25.6 v2.6 M33.1 25.6 v2.6" stroke="#b25a26" stroke-width=".7" stroke-linecap="round"/>
+      <path d="M22.6 28.9 Q25.6 27.4 28.6 28.9 Q25.6 30 22.6 28.9Z M35.4 28.9 Q38.4 27.4 41.4 28.9 Q38.4 30 35.4 28.9Z" fill="#fff"/>
+      <circle cx="25.7" cy="28.75" r="1.05" fill="#4a7aa8"/><circle cx="38.3" cy="28.75" r="1.05" fill="#4a7aa8"/>
+      <circle cx="25.7" cy="28.75" r=".45" fill="#111"/><circle cx="38.3" cy="28.75" r=".45" fill="#111"/>
+      <path d="M22.2 28.8 Q25.6 26.7 29 28.6 M35 28.6 Q38.4 26.7 41.8 28.8" stroke="#7a3a18" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <path d="M23.2 30.8 Q25.7 31.8 28.2 30.8 M35.8 30.8 Q38.3 31.8 40.8 30.8" stroke="#c0622b" stroke-width=".7" fill="none" opacity=".7"/>
+      <path d="M32 28.6 Q34 33.6 33.7 35.3 Q32 36.6 30.3 35.3" stroke="#a9521f" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <path d="M32.3 30 L32.8 33.6" stroke="#ffd9b0" stroke-width=".8" stroke-linecap="round"/>
+      <path d="M27.4 35.6 Q25.8 39 27.6 41.8 M36.6 35.6 Q38.2 39 36.4 41.8" stroke="#a9521f" stroke-width=".8" fill="none" opacity=".6"/>
+      <path d="M28.8 40.3 Q32 38.9 35.2 40.3 Q32 42.3 28.8 40.3Z" fill="#b54a4a"/>
+      <path d="M29.6 40.3 Q32 39.8 34.4 40.3" stroke="#7a2626" stroke-width=".6" fill="none"/>
+      <path d="M20.4 38.5 Q22.4 43.4 27 45 M43.6 38.5 Q41.6 43.4 37 45" stroke="#b25a26" stroke-width=".8" fill="none" opacity=".5"/>
+      <path d="M30 44.3 Q32 45.1 34 44.3" stroke="#a9521f" stroke-width=".7" fill="none" opacity=".6"/>
+      <path d="M15.8 31 Q12.6 17 21 11.2 Q29.5 5.6 40.5 7.4 Q51.8 9.2 53.4 18.6 Q54.6 24.6 49.6 28 Q48.2 21.4 44 19.4 Q38 17.2 32 18.6 Q24 19.8 19.6 25.2 Q17.6 27.8 17.8 31.6Z" fill="url(#hr)"/>
+      <path d="M18.2 24.6 Q21.6 13 33.4 11.6 Q46.2 10.6 51.4 17.8 Q44.4 13.8 35.4 15.6 Q25.4 17.2 19.8 26.4Z" fill="#fff6d0"/>
+      <path d="M22 15.4 Q31.6 9.6 46 12 M20.4 20.6 Q30 13.8 44.4 15.6 M44.6 9.6 Q52.4 12.6 52.8 20.4 M25.5 11.6 Q34 7.6 43.5 9" stroke="#c69a3e" stroke-width=".8" fill="none" stroke-linecap="round"/>
+      <path d="M47 21.5 Q50 24 49.6 28" stroke="#b78a34" stroke-width=".9" fill="none"/>`,
+    vdl: `
+      <defs>
+        <radialGradient id="eu" cx=".5" cy=".45" r=".6"><stop offset="0" stop-color="#2a5ee8"/><stop offset=".7" stop-color="#003399"/><stop offset="1" stop-color="#001a66"/></radialGradient>
+        <radialGradient id="sk" cx=".45" cy=".38" r=".7"><stop offset="0" stop-color="#ffe6cf"/><stop offset=".65" stop-color="#f3c6a2"/><stop offset="1" stop-color="#d99d78"/></radialGradient>
+        <linearGradient id="hr" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#fff6d8"/><stop offset=".5" stop-color="#ead08e"/><stop offset="1" stop-color="#b8924f"/></linearGradient>
+        <linearGradient id="jk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f9dbe5"/><stop offset="1" stop-color="#d995ae"/></linearGradient>
+        <radialGradient id="prl" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#fff"/><stop offset=".6" stop-color="#ebe5d8"/><stop offset="1" stop-color="#b3ab9a"/></radialGradient>
+      </defs>
+      <circle cx="32" cy="30" r="29" fill="url(#eu)"/>
+      ${euStars(32, 30, 24.5, 2.7)}
+      <path d="M5 64 Q7 49.5 21 46 L32 52 L43 46 Q57 49.5 59 64Z" fill="url(#jk)"/>
+      <path d="M24.5 45.5 L32 57 L39.5 45.5Z" fill="#fbf4e6"/>
+      <path d="M28 49 Q32 52 36 49 M29.5 52.5 Q32 54.5 34.5 52.5" stroke="#e5d9bd" stroke-width=".7" fill="none"/>
+      <path d="M21 46 L27 47.5 L32 61 L28.5 64 L24 64Z M43 46 L37 47.5 L32 61 L35.5 64 L40 64Z" fill="#f4c3d3" stroke="#c27c98" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M27.4 37 h9.2 v8.6 q-4.6 2.6 -9.2 0z" fill="#e8b892"/>
+      ${pearls()}
+      <path d="M17.4 40 Q13.6 25 19.4 15.4 Q26 8 34 8.4 Q45 9 48.4 18.4 Q50.8 28 46.8 41 Q44 43 42 41 L22 41 Q19.6 43 17.4 40Z" fill="#c9a560"/>
+      <path d="M20.6 27 Q20.6 16 32 15.5 Q43.4 16 43.4 27 Q43.4 37.6 38.2 41.8 Q35.2 44.2 32 44.2 Q28.8 44.2 25.8 41.8 Q20.6 37.6 20.6 27Z" fill="url(#sk)"/>
+      <ellipse cx="25.2" cy="34" rx="3" ry="1.9" fill="#f08aa0" opacity=".35"/><ellipse cx="38.8" cy="34" rx="3" ry="1.9" fill="#f08aa0" opacity=".35"/>
+      <path d="M23.2 25.3 Q26.6 23.2 30 24.8 M34 24.8 Q37.4 23.2 40.8 25.3" stroke="#a8844a" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <path d="M24.2 29 Q26.6 27.2 29 29 Q26.6 30.2 24.2 29Z M35 29 Q37.4 27.2 39.8 29 Q37.4 30.2 35 29Z" fill="#fff"/>
+      <circle cx="26.6" cy="28.75" r="1.15" fill="#5b8fb5"/><circle cx="37.4" cy="28.75" r="1.15" fill="#5b8fb5"/>
+      <circle cx="26.6" cy="28.75" r=".5" fill="#1f2937"/><circle cx="37.4" cy="28.75" r=".5" fill="#1f2937"/>
+      <path d="M23.8 28.9 Q26.6 26.6 29.4 28.7 M34.6 28.7 Q37.4 26.6 40.2 28.9" stroke="#6b4a2e" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <path d="M24.6 30.7 Q26.6 31.6 28.6 30.7 M35.4 30.7 Q37.4 31.6 39.4 30.7" stroke="#c98d6a" stroke-width=".6" fill="none"/>
+      <path d="M32 29.4 Q31 33.6 30.5 34.8 Q32 36 33.6 34.8" stroke="#c48663" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <path d="M25.4 37.2 Q32 43.8 38.6 37.2 Q32 38.8 25.4 37.2Z" fill="#c74e6e"/>
+      <path d="M26.6 37.7 Q32 39.4 37.4 37.7 Q36.4 39.9 32 40.1 Q27.6 39.9 26.6 37.7Z" fill="#fff"/>
+      <path d="M25.4 37.2 Q32 43.8 38.6 37.2" stroke="#a83a58" stroke-width=".6" fill="none"/>
+      <path d="M24.3 35.6 Q23.6 38.4 25.3 40.4 M39.7 35.6 Q40.4 38.4 38.7 40.4" stroke="#c98d6a" stroke-width=".7" fill="none" opacity=".7"/>
+      <path d="M21.2 23.6 Q16.4 28.6 16.8 35.6 Q17.4 41.4 21.6 42.6 Q20 38 22.2 33.6 Q21 29 23.6 25.2Z" fill="url(#hr)"/>
+      <path d="M42.6 22.6 Q47.8 27.6 47.4 35.2 Q47 41.2 42.4 42.8 Q44.2 38 41.8 33.4 Q43 28.6 40.4 24.4Z" fill="url(#hr)"/>
+      <path d="M18.6 28 Q16.4 14.4 27.6 10 Q39.6 6.6 46.6 14.6 Q50.4 19.8 46.4 27 Q43.8 20.4 38.4 19.6 Q35 23.4 27.6 24.8 Q23 25.8 20.4 29.6Z" fill="url(#hr)"/>
+      <path d="M21 21 Q24.6 13 33 12 Q41 11.4 44.6 16.6" stroke="#fffaf0" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".8"/>
+      <path d="M20.6 25.4 Q26 20.8 36.4 19.4 M24.2 15.2 Q31 10.4 40 11.4 M43.4 24 Q45.6 21 44.2 17" stroke="#b8924f" stroke-width=".8" fill="none" stroke-linecap="round"/>
+      <path d="M17.8 34 Q18.6 38.6 21.4 41 M46.4 33 Q46 38.4 43 41.2" stroke="#b8924f" stroke-width=".7" fill="none"/>`,
+    rocket: `
+      <defs>
+        <linearGradient id="rb" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cbd5e1"/><stop offset=".35" stop-color="#ffffff"/><stop offset="1" stop-color="#8a97ab"/></linearGradient>
+        <linearGradient id="rr" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff6b81"/><stop offset=".4" stop-color="#ef233c"/><stop offset="1" stop-color="#8d0b1e"/></linearGradient>
+        <linearGradient id="fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7c2"/><stop offset=".35" stop-color="#ffd23f"/><stop offset=".75" stop-color="#ff6a00"/><stop offset="1" stop-color="#ff2bd6" stop-opacity="0"/></linearGradient>
+        <radialGradient id="pw" cx=".38" cy=".35" r=".7"><stop offset="0" stop-color="#a5f3fc"/><stop offset=".5" stop-color="#2563eb"/><stop offset="1" stop-color="#0b1f5c"/></radialGradient>
+      </defs>
+      <g transform="rotate(35 32 32)">
+        <path d="M23.5 38.5 Q32 70 40.5 38.5Z" fill="url(#fl)"/>
+        <path d="M27.5 38.5 Q32 57 36.5 38.5Z" fill="#fff7c2" opacity=".9"/>
+        <path d="M22 26 L12 40 Q12 42 14 41.6 L22 38.6Z M42 26 L52 40 Q52 42 50 41.6 L42 38.6Z" fill="url(#rr)"/>
+        <path d="M32 2.5 Q43.5 12.5 43 35.5 L21 35.5 Q20.5 12.5 32 2.5Z" fill="url(#rb)" stroke="#64748b" stroke-width=".8"/>
+        <path d="M32 2.5 Q38 7.6 40.6 14.6 L23.4 14.6 Q26 7.6 32 2.5Z" fill="url(#rr)"/>
+        <path d="M23.4 14.6 H40.6" stroke="#64748b" stroke-width=".8"/>
+        <path d="M26 17 Q25.4 26 26 34" stroke="#fff" stroke-width="1.4" fill="none" opacity=".9" stroke-linecap="round"/>
+        <circle cx="32" cy="23" r="5" fill="url(#pw)" stroke="#cbd5e1" stroke-width="1.8"/>
+        <circle cx="32" cy="23" r="6.1" fill="none" stroke="#64748b" stroke-width=".6"/>
+        <path d="M29.6 21 Q30.6 19.8 32.2 19.8" stroke="#fff" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+        <rect x="30.6" y="29" width="2.8" height="11.5" rx="1" fill="url(#rr)"/>
+        <rect x="22.5" y="35.5" width="19" height="4" rx="1" fill="#475569"/>
+        <path d="M23.5 36.4 H40.5" stroke="#94a3b8" stroke-width=".7"/>
+        <g fill="#94a3b8"><circle cx="25" cy="33" r=".6"/><circle cx="39" cy="33" r=".6"/><circle cx="25" cy="17" r=".6"/><circle cx="39" cy="17" r=".6"/></g>
+      </g>`,
+    car: `
+      <defs>
+        <linearGradient id="cb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7088"/><stop offset=".45" stop-color="#e11d48"/><stop offset="1" stop-color="#7f0a24"/></linearGradient>
+        <linearGradient id="gl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#cffafe"/><stop offset=".5" stop-color="#38bdf8"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient>
+        <radialGradient id="rim" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#f1f5f9"/><stop offset=".7" stop-color="#94a3b8"/><stop offset="1" stop-color="#475569"/></radialGradient>
+      </defs>
+      <path d="M3 43 Q3 34.5 13 32.2 L21.5 24 Q25.5 21 33 21 L42 21 Q48.5 22 52.5 30 L58 31.8 Q62 33.6 61.2 43 Q61 46 58 46 L6 46 Q3 46 3 43Z" fill="url(#cb)"/>
+      <path d="M4.5 41 H60.5 L60.4 43 Q60.2 45.2 58 45.2 L6 45.2 Q4.2 45.2 4.2 43Z" fill="#5c0718" opacity=".7"/>
+      <path d="M14.5 32.8 L22.2 25.6 Q26 22.8 33 22.8 L42 22.8 Q47.2 23.6 50.8 30.4" stroke="#ffc2cc" stroke-width="1" fill="none" opacity=".85"/>
+      <path d="M22.8 31 L27.2 25.8 Q29.2 24.4 33 24.4 L33 31Z M35.6 31 L35.6 24.4 L41 24.4 Q45 25.3 48 31Z" fill="url(#gl)"/>
+      <path d="M25.6 29.6 L29 25.8 M38 29.8 L40.6 25.4" stroke="#fff" stroke-width=".9" opacity=".8" stroke-linecap="round"/>
+      <path d="M7.5 36.4 H57.5" stroke="#ff9db0" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M34.3 31.5 V43 M22.6 32 V43" stroke="#7f0a24" stroke-width=".8"/>
+      <path d="M30.5 33 H32.8" stroke="#ffc2cc" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M45 31.5 L40 37.4 L43.4 37.4 L41.4 42 L47.6 35.4 L44.2 35.4 L46.8 31.5Z" fill="#ffe14d" stroke="#7a4a00" stroke-width=".6" stroke-linejoin="round"/>
+      <path d="M57.2 34 Q60.6 34.2 60.9 36.6 L57.2 36.6Z" fill="#e0ffff"/>
+      <rect x="3.4" y="34.6" width="3" height="2.6" rx="1" fill="#ff2bd6"/>
+      <circle cx="16" cy="44" r="7.6" fill="#2a0612"/><circle cx="48" cy="44" r="7.6" fill="#2a0612"/>
+      <circle cx="16" cy="44" r="6.4" fill="#151515"/><circle cx="48" cy="44" r="6.4" fill="#151515"/>
+      <circle cx="16" cy="44" r="3.6" fill="url(#rim)"/><circle cx="48" cy="44" r="3.6" fill="url(#rim)"/>
+      <path d="M16 40.8 V47.2 M12.8 44 H19.2 M48 40.8 V47.2 M44.8 44 H51.2" stroke="#475569" stroke-width=".9"/>
+      <circle cx="16" cy="44" r="1.2" fill="#334155"/><circle cx="48" cy="44" r="1.2" fill="#334155"/>`,
+    chip: `
+      <defs>
+        <linearGradient id="pin" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff8d6"/><stop offset="1" stop-color="#b8953a"/></linearGradient>
+        <linearGradient id="pcb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#24a85a"/><stop offset="1" stop-color="#0b4a25"/></linearGradient>
+        <linearGradient id="die" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#334155"/><stop offset="1" stop-color="#0b1120"/></linearGradient>
+      </defs>
+      ${chipPins()}
+      <rect x="11" y="11" width="42" height="42" rx="5" fill="url(#pcb)" stroke="#063018" stroke-width="1.4"/>
+      <path d="M14 22 H18 M14 32 H18 M14 42 H18 M46 22 H50 M46 32 H50 M46 42 H50 M22 14 V18 M32 14 V18 M42 14 V18 M22 46 V50 M32 46 V50 M42 46 V50" stroke="#9dffc4" stroke-width="1" opacity=".75"/>
+      <g fill="#d1ffe4">${chipVias()}</g>
+      <rect x="18" y="18" width="28" height="28" rx="3" fill="url(#die)" stroke="#39ff88" stroke-width="1.1"/>
+      <path d="M20 20.2 H36" stroke="#fff" stroke-width=".8" opacity=".35" stroke-linecap="round"/>
+      <text x="32" y="38" ${F} font-size="15" fill="#39ff88" stroke="#d1ffe4" stroke-width=".5">AI</text>
+      <circle cx="15" cy="15" r="1.4" fill="#d1ffe4"/>`,
+    data: `
+      <defs>
+        <linearGradient id="db" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient>
+        <linearGradient id="df" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfe3ff"/><stop offset="1" stop-color="#3b82f6"/></linearGradient>
+      </defs>
+      <rect x="6" y="14" width="52" height="37" rx="5" fill="url(#db)" stroke="#0b1f5c" stroke-width="1.4"/>
+      <path d="M8 49 L26.5 33.5 M56 49 L37.5 33.5" stroke="#0b1f5c" stroke-width="1.4" opacity=".6"/>
+      <path d="M8.5 20 V45" stroke="#93c5fd" stroke-width=".8" opacity=".5"/>
+      <path d="M7.2 16.6 Q7.4 14.7 9.4 14.7 H54.6 Q56.6 14.7 56.8 16.6 L32 36Z" fill="url(#df)" stroke="#0b1f5c" stroke-width="1.2" stroke-linejoin="round"/>
+      <path d="M12 17.4 L32 32.6 L52 17.4" stroke="#fff" stroke-width="1.1" fill="none" opacity=".7"/>
+      <circle cx="32" cy="35" r="4" fill="#22e5ff" stroke="#0b1f5c" stroke-width="1"/>
+      <path d="M30.2 35 L31.6 36.4 L34 33.6" stroke="#0b1f5c" stroke-width="1.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="32" y="47.8" ${F} font-size="7" fill="#a5f3fc">010110</text>`,
+    cap: `
+      <defs>
+        <linearGradient id="pet" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e0f2fe" stop-opacity=".9"/><stop offset=".5" stop-color="#7dd3fc" stop-opacity=".55"/><stop offset="1" stop-color="#bae6fd" stop-opacity=".85"/></linearGradient>
+        <linearGradient id="cs" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1e3a8a"/><stop offset=".3" stop-color="#3b82f6"/><stop offset="1" stop-color="#172f73"/></linearGradient>
+        <radialGradient id="ct" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#93c5fd"/><stop offset="1" stop-color="#1d4ed8"/></radialGradient>
+      </defs>
+      <path d="M42 64 V51 Q42 47.6 44.4 46.4 V40 H55.6 V46.4 Q58 47.6 58 51 V64Z" fill="url(#pet)" stroke="#7dd3fc" stroke-width=".9"/>
+      <path d="M44.4 41.6 H55.6 M44.4 43.4 H55.6" stroke="#38bdf8" stroke-width=".7" opacity=".8"/>
+      <path d="M45.4 50 V62" stroke="#fff" stroke-width="1.2" opacity=".7" stroke-linecap="round"/>
+      <rect x="43" y="44.4" width="14" height="3.4" rx="1.2" fill="#2563eb" stroke="#172f73" stroke-width=".7"/>
+      <path d="M44 46.2 Q35 52.6 30.5 41.5" stroke="#172f73" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M44 46.2 Q35 52.6 30.5 41.5" stroke="#3b82f6" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+      <path d="M43 45.4 Q35.4 50.6 31.6 42" stroke="#93c5fd" stroke-width=".9" fill="none" opacity=".8"/>
+      <path d="M7 24 V33 A17 10 0 0 0 41 33 V24 A17 10 0 0 1 7 24Z" fill="url(#cs)"/>
+      ${capRidges()}
+      <ellipse cx="24" cy="24" rx="17" ry="10" fill="url(#ct)" stroke="#172f73" stroke-width=".9"/>
+      <ellipse cx="24" cy="24" rx="12.6" ry="7.2" fill="none" stroke="#bfdbfe" stroke-width="1" opacity=".8"/>
+      <text ${F} font-size="12" fill="#e0f2fe" transform="translate(24 28.2) scale(1 .64)">EU</text>
+      <path d="M11 20.4 Q16 16.2 24 15.6" stroke="#fff" stroke-width="1.2" fill="none" opacity=".6" stroke-linecap="round"/>`,
+    fine: `
+      <defs>
+        <linearGradient id="pp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffdf4"/><stop offset="1" stop-color="#eadfbd"/></linearGradient>
+        <linearGradient id="fh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2459e0"/><stop offset="1" stop-color="#002277"/></linearGradient>
+      </defs>
+      <rect x="13" y="7" width="43" height="54" rx="3" fill="#d9cda8" transform="rotate(5 34 34)"/>
+      <path d="M12 5 H52 Q54 5 54 7 V52 L46 60 H12 Q10 60 10 58 V7 Q10 5 12 5Z" fill="url(#pp)" stroke="#a1801f" stroke-width="1"/>
+      <path d="M54 52 H48 Q46 52 46 54 V60Z" fill="#d4c08a" stroke="#a1801f" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M12 5 H52 Q54 5 54 7 V17 H10 V7 Q10 5 12 5Z" fill="url(#fh)"/>
+      ${euStars(17, 11, 3.3, 0.95)}
+      <text x="37" y="14.6" ${F} font-size="8" fill="#fff">FINE</text>
+      <path d="M15 22 H40 M15 25 H34" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round"/>
+      <text x="32" y="35" ${F} font-size="14" fill="#e11d48" textLength="36" lengthAdjust="spacingAndGlyphs">€4.2B</text>
+      <rect x="16" y="40" width="32" height="1.8" rx=".9" fill="#cbd5e1"/><rect x="16" y="44.4" width="22" height="1.8" rx=".9" fill="#cbd5e1"/>
+      <path d="M14.5 55 q2.2 -4 3.8 0 t3.8 0 t3.6 -1.2" stroke="#1e3a8a" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <g transform="rotate(-16 38 51)" opacity=".92"><rect x="24" y="45.5" width="29" height="11" rx="2" fill="#fff1f2" stroke="#e11d48" stroke-width="2"/>
+        <rect x="25.8" y="47.3" width="25.4" height="7.4" rx="1" fill="none" stroke="#e11d48" stroke-width=".6"/>
+        <text x="38.5" y="53.4" ${F} font-size="6" fill="#e11d48" textLength="22" lengthAdjust="spacingAndGlyphs">PAY NOW</text></g>`,
+    reg: `
+      <defs>
+        <linearGradient id="brk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a9afbd"/><stop offset="1" stop-color="#666c7a"/></linearGradient>
+        <linearGradient id="sec" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#e2d9ff"/><stop offset="1" stop-color="#9b87d9"/></linearGradient>
+      </defs>
+      <rect x="3" y="5" width="58" height="54" rx="4" fill="#2f2a44"/>
+      ${bricks()}
+      <text x="33.6" y="48.4" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-weight="900" font-size="40" fill="#1b1530" opacity=".6">§</text>
+      <text x="32" y="46.6" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-weight="900" font-size="40" fill="url(#sec)" stroke="#2a1f4d" stroke-width="1.6">§</text>`
+  };
+  // Neon outline + glow in each figure's colour, baked into the SVG (so the canvas pays nothing per frame):
+  // a solid rim made by dilating the silhouette, plus a soft blur of it. The art is shrunk a little inside
+  // the 64x64 viewBox so the glow is not clipped.
+  const GLOW = { data: '#22e5ff', chip: '#39ff88', car: '#ff4d8d', rocket: '#ff9a3c', trump: '#ffcf3f',
+                 cap: '#3b9bff', fine: '#ff3355', reg: '#b48cff', vdl: '#ff7ac8' };
+  const svgUrl = (inner, glow) =>
+    'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs>' +
+      '<filter id="neon" filterUnits="userSpaceOnUse" x="0" y="0" width="64" height="64" color-interpolation-filters="sRGB">' +
+      '<feMorphology in="SourceAlpha" operator="dilate" radius="1.3" result="d"/>' +
+      `<feFlood flood-color="${glow}"/><feComposite in2="d" operator="in" result="rim"/>` +
+      '<feGaussianBlur in="rim" stdDeviation="2.4" result="blur"/>' +
+      '<feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="rim"/><feMergeNode in="SourceGraphic"/></feMerge>' +
+      `</filter></defs><g filter="url(#neon)"><g transform="translate(5.5 5.5) scale(.828)">${inner}</g></g></svg>`);
+  const IMG = {};
+  for (const k in ART) { IMG[k] = new Image(); IMG[k].src = svgUrl(ART[k], GLOW[k]); }
+
+  // ---------- Object types ----------
+  const TYPES = {
+    data:   { kind: 'food', name: 'Data packet',  pts: 10, grow: 1, ttl: [10000, 10000], sfx: 'coin' },
+    chip:   { kind: 'food', name: 'AI chip',      pts: 20, grow: 1, ttl: [5000, 7000], w: 30, sfx: 'chip' },
+    car:    { kind: 'food', name: 'Electric car', pts: 30, grow: 2, ttl: [5000, 7000], w: 25, sfx: 'zap' },
+    rocket: { kind: 'food', name: 'Rocket',       pts: 50, grow: 2, ttl: [5000, 7000], w: 20, sfx: 'whoosh' },
+    trump:  { kind: 'food', name: 'Trump',        pts: 75, grow: 2, ttl: [5000, 7000], w: 18, sfx: 'brass',
+              say: ['Super intelligence!', 'Tremendous!', 'Nobody eats better than me. Believe me.', 'Huge!'] },
+    cap:    { kind: 'bad',  name: 'Tethered bottle cap', pts: -20, shrink: 2, ttl: [8000, 8000], sfx: 'crunch' },
+    fine:   { kind: 'trap', name: 'EU fine',      ttl: [8000, 14000], w: 40, sfx: 'kaching' },
+    reg:    { kind: 'trap', name: 'Regulation',   ttl: [8000, 14000], w: 40, sfx: 'stamp' },
+    vdl:    { kind: 'trap', name: 'Von der Leyen', ttl: [8000, 14000], w: 20, sfx: 'odeToJoy',
+              say: ['Regulated!', 'That will be four percent of global turnover.'] }
+  };
+  const BONUS = ['chip', 'car', 'rocket', 'trump'];
+  const TRAPS = ['fine', 'reg', 'vdl'];
+
+  const DEATH = {
+    fine: ['You have been fined 4% of global turnover.', 'The EU fined you. Your lawyers send their thanks.'],
+    reg:  ['Innovation stifled. Please fill out form 27-B.', 'Your startup is now a compliance department.'],
+    vdl:  ['Ursula has opened an investigation into you.', 'Ursula regulated you into oblivion.'],
+    self: ['You disrupted yourself.', 'Move fast and break… yourself.'],
+    cap:  ['Death by tethered cap. The EU sends its regards.']
+  };
+
+  // Real data, fetched once on 26 Nov 2026 and frozen here (the game makes no network calls).
+  const RATES = { date: '25 Nov 2026', USD: 1.0935, DKK: 7.4743 }; // per 1 EUR
+  const FACTS = [ // from Wikipedia summaries, rewritten
+    'GDPR replaced a 1995 directive. Your cookie banner is its grandchild.',
+    'GDPR follows EU data even when it leaves Europe. Like a very polite stalker.',
+    'The DMA has applied since 2 May 2023. Its goal: a "contestable" digital economy. Contest accepted.',
+    'The DSA updated e-commerce rules from 2000 – back when "platform" meant a train station.',
+    'The AI Act entered into force on 1 Aug 2024 and phases in over 36 months. Plenty of time to lawyer up.',
+    "Your tethered cap comes from Directive (EU) 2019/904, adopted 5 June 2019. You're welcome.",
+    'EU roaming charges are banned across the EEA. Your phone bill finally stopped being a souvenir.',
+    'The Commission once specified a common phone charger with USB Micro-B. Standards age faster than directives.',
+    'Since a 2009 amendment, the ePrivacy Directive puts cookies behind prior consent. Click accept to continue.',
+    'The "Brussels effect": companies follow EU rules even outside the EU. Paperwork travels visa-free.',
+    'The European Chips Act (2023) aims to encourage EU semiconductor production. Step one: form a board.'
+  ];
+
+  // ---------- Helpers ----------
+  const rand = n => Math.floor(Math.random() * n);
+  const pickArr = a => a[rand(a.length)];
+  const big = x => x >= 1e9 ? (x / 1e9).toFixed(1) + ' billion' : Math.round(x / 1e6) + ' million';
+  const fineText = sc => {
+    const eur = 5e7 + sc * 5e6; // the fine grows with your success
+    return `Fine: €${big(eur)} ≈ $${big(eur * RATES.USD)} ≈ ${big(eur * RATES.DKK)} DKK (rates of ${RATES.date})`;
+  };
+  const randRange = ([a, b]) => a + Math.random() * (b - a);
+  function pickWeighted(keys) {
+    const total = keys.reduce((s, k) => s + TYPES[k].w, 0);
+    let r = Math.random() * total;
+    for (const k of keys) { r -= TYPES[k].w; if (r < 0) return k; }
+    return keys[keys.length - 1];
+  }
+  const store = (() => {
+    const mem = {};
+    const ark = (window.arkade && typeof window.arkade.gem === 'function' &&
+                 typeof window.arkade.hent === 'function') ? window.arkade : null;
+    const asText = v => (v == null ? null : typeof v === 'string' ? v : JSON.stringify(v));
+    return {
+      ark, mem, asText,
+      get(k) {
+        if (k in mem) return mem[k];
+        try { return localStorage.getItem(k); } catch (e) { return null; }
+      },
+      set(k, v) {
+        mem[k] = v;
+        try { localStorage.setItem(k, v); } catch (e) { /* blocked in the arcade */ }
+        if (ark) try { const r = ark.gem(k, v); if (r && r.catch) r.catch(() => {}); } catch (e) { /* ignore */ }
+      }
+    };
+  })();
+
+  // ---------- Audio engine ----------
+  let A = null, master = null, reverb = null, noiseBuf = null, bus = null;
+  let muted = store.get(MUTE_KEY) === '1';
+
+  function audio() {
+    if (!A) {
+      try { A = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+      const comp = A.createDynamicsCompressor();
+      master = A.createGain(); master.gain.value = 0.55;
+      master.connect(comp).connect(A.destination);
+      // small generated room reverb
+      const len = A.sampleRate * 1.2, ir = A.createBuffer(2, len, A.sampleRate);
+      for (let c = 0; c < 2; c++) {
+        const d = ir.getChannelData(c);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      }
+      reverb = A.createConvolver(); reverb.buffer = ir;
+      const wet = A.createGain(); wet.gain.value = 0.22;
+      reverb.connect(wet).connect(master);
+      noiseBuf = A.createBuffer(1, A.sampleRate, A.sampleRate);
+      const nd = noiseBuf.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      newBus();
+    }
+    if (A.state === 'suspended') A.resume();
+    return A;
+  }
+  // All SFX go through a replaceable bus, so mute/restart can silence sounds already scheduled.
+  function newBus() {
+    bus = A.createGain();
+    bus.connect(master); bus.connect(reverb);
+  }
+  function cutSfx() {
+    if (!A || !bus) return;
+    bus.gain.value = 0; bus.disconnect();
+    newBus();
+  }
+  function out(node) { node.connect(bus); }
+
+  // Note with ADSR, optional filter, vibrato and pitch slide
+  function note({ f, d = 0.15, type = 'square', vol = 0.1, at = 0, slide = 0, attack = 0.005,
+                  filter = 0, q = 1, vib = 0, detune = 0 }) {
+    const a = A, t = a.currentTime + at;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.detune.value = detune;
+    o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d);
+    if (vib) {
+      const l = a.createOscillator(), lg = a.createGain();
+      l.frequency.value = 6; lg.gain.value = vib;
+      l.connect(lg).connect(o.frequency); l.start(t); l.stop(t + d + 0.1);
+    }
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    let last = o;
+    if (filter) {
+      const fl = a.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = filter; fl.Q.value = q;
+      o.connect(fl); last = fl;
+    }
+    last.connect(g); out(g);
+    o.start(t); o.stop(t + d + 0.05);
+  }
+  function noise({ d = 0.2, vol = 0.2, at = 0, type = 'bandpass', f = 1000, f2 = 0, q = 1 }) {
+    const a = A, t = a.currentTime + at;
+    const s = a.createBufferSource(); s.buffer = noiseBuf;
+    const fl = a.createBiquadFilter(); fl.type = type; fl.Q.value = q;
+    fl.frequency.setValueAtTime(f, t);
+    if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + d);
+    const g = a.createGain();
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    s.connect(fl).connect(g); out(g);
+    s.start(t); s.stop(t + d + 0.05);
+  }
+  const chord = (fs, opts) => fs.forEach((f, i) => note({ ...opts, f, detune: (i % 2 ? 6 : -6) }));
+
+  const SFX = {
+    coin() {
+      note({ f: 988, d: 0.08, type: 'square', vol: 0.08 });
+      note({ f: 1319, d: 0.25, type: 'square', vol: 0.08, at: 0.07 });
+      note({ f: 1319, d: 0.25, type: 'triangle', vol: 0.06, at: 0.07 });
+    },
+    chip() {
+      [1200, 1800, 1500, 2400].forEach((f, i) => note({ f, d: 0.05, type: 'square', vol: 0.06, at: i * 0.045 }));
+    },
+    zap() {
+      note({ f: 180, slide: 1800, d: 0.22, type: 'sawtooth', vol: 0.09, filter: 3000, q: 6 });
+      noise({ d: 0.12, vol: 0.12, f: 4000, type: 'highpass' });
+      note({ f: 1800, slide: 2600, d: 0.15, type: 'square', vol: 0.04, at: 0.18 });
+    },
+    whoosh() {
+      noise({ d: 0.9, vol: 0.35, f: 300, f2: 4000, q: 2 });
+      note({ f: 200, slide: 900, d: 0.8, type: 'sine', vol: 0.08 });
+    },
+    synthRise() {
+      [0, 4, 7, 12, 16].forEach((s, i) =>
+        note({ f: 330 * Math.pow(2, s / 12), d: 0.25, type: 'sawtooth', vol: 0.06, at: i * 0.06, filter: 900 + i * 600, q: 8 }));
+    },
+    brass() {
+      // big brassy "presidential" fanfare
+      const o = { type: 'sawtooth', vol: 0.06, filter: 1600, q: 2, attack: 0.03, vib: 4 };
+      chord([392, 494, 587], { ...o, d: 0.18 });
+      chord([392, 494, 587], { ...o, d: 0.18, at: 0.2 });
+      chord([523, 659, 784], { ...o, d: 0.6, at: 0.4, filter: 2200 });
+      noise({ d: 0.3, vol: 0.06, at: 0.4, f: 6000, type: 'highpass' }); // cymbal
+    },
+    crunch() {
+      noise({ d: 0.18, vol: 0.4, f: 2500, type: 'highpass' });
+      noise({ d: 0.1, vol: 0.3, at: 0.06, f: 1200, q: 3 });
+      note({ f: 140, slide: 60, d: 0.3, type: 'sawtooth', vol: 0.12, filter: 600 });
+    },
+    kaching() {
+      noise({ d: 0.05, vol: 0.4, f: 3000, type: 'highpass' });
+      note({ f: 1568, d: 0.9, type: 'sine', vol: 0.12, at: 0.06 });
+      note({ f: 2093, d: 0.9, type: 'sine', vol: 0.1, at: 0.09 });
+      note({ f: 3136, d: 0.6, type: 'triangle', vol: 0.05, at: 0.09 });
+    },
+    stamp() {
+      note({ f: 120, slide: 40, d: 0.35, type: 'sine', vol: 0.4 });
+      noise({ d: 0.15, vol: 0.4, f: 600, q: 0.7 });
+    },
+    odeToJoy() {
+      // Beethoven, 9th symphony (public domain) – the EU anthem
+      const E = 659, Fs = 698, G = 784, D = 587, C = 523;
+      [E, E, Fs, G, G, Fs, E, D, C].forEach((f, i) => {
+        note({ f, d: 0.2, type: 'triangle', vol: 0.12, at: i * 0.19 });
+        note({ f: f / 2, d: 0.2, type: 'square', vol: 0.03, at: i * 0.19, filter: 1200 });
+      });
+    },
+    boing() { note({ f: 600, slide: 120, d: 0.4, type: 'sine', vol: 0.2, vib: 30 }); },
+    sadTrombone() {
+      [311, 294, 277].forEach((f, i) => note({ f, d: 0.35, type: 'sawtooth', vol: 0.08, at: 0.9 + i * 0.36, filter: 900, vib: 5, attack: 0.04 }));
+      note({ f: 262, d: 1.0, type: 'sawtooth', vol: 0.08, at: 0.9 + 3 * 0.36, filter: 900, vib: 14, attack: 0.04 });
+    },
+    fanfare() {
+      [523, 659, 784, 1047, 784, 1047].forEach((f, i) => note({ f, d: 0.16, type: 'square', vol: 0.07, at: i * 0.12 }));
+    },
+    start() { [392, 523, 659, 784].forEach((f, i) => note({ f, d: 0.12, type: 'square', vol: 0.07, at: i * 0.07 })); }
+  };
+  function sfx(name) { if (muted || !audio()) return; try { SFX[name](); } catch (e) { /* ignore */ } }
+
+  // ---------- Voices ----------
+  // Picks the most natural-sounding installed voice that fits each character.
+  const VOICE_STYLE = {
+    trump:  { lang: /^en-US/i, prefer: /guy|christopher|eric|roger|david|mark|male/i, pitch: 0.9, rate: 0.9 },
+    vdl:    { lang: /^de/i,    prefer: /katja|amala|hedda|seraphina|female/i, pitch: 1.05, rate: 0.95, fallback: /^en-GB/i },
+    rocket: { lang: /^en/i,    prefer: /aria|jenny|zira|susan|female/i, pitch: 1.0, rate: 1.1 }
+  };
+  let voices = [];
+  const loadVoices = () => { if (window.speechSynthesis) voices = speechSynthesis.getVoices(); };
+  loadVoices();
+  if (window.speechSynthesis) speechSynthesis.onvoiceschanged = loadVoices;
+  function voiceFor(style) {
+    const natural = v => /natural|online|neural/i.test(v.name) ? 2 : 0;
+    const score = v => natural(v) + (style.prefer.test(v.name) ? 1 : 0);
+    const pool = voices.filter(v => style.lang.test(v.lang));
+    const pool2 = pool.length ? pool : voices.filter(v => (style.fallback || /^en/i).test(v.lang));
+    return pool2.sort((a, b) => score(b) - score(a))[0] || null;
+  }
+  function speak(text, who) {
+    if (muted || !window.speechSynthesis) return;
+    try {
+      const st = VOICE_STYLE[who] || VOICE_STYLE.rocket;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const v = voiceFor(st);
+      if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
+      u.pitch = st.pitch; u.rate = st.rate;
+      speechSynthesis.speak(u);
+    } catch (e) { /* speech unavailable */ }
+  }
+  // Optional real clips (whole files or start/end segments of long recordings)
+  const CLIPS = {};
+  for (const who of new Set([...Object.keys(EMBEDDED_CLIPS), ...Object.keys(VOICE_CLIPS)])) {
+    const defs = [...(EMBEDDED_CLIPS[who] || []), ...(VOICE_CLIPS[who] || [])];
+    CLIPS[who] = defs.map(def => {
+      const c = typeof def === 'string' ? { src: def } : { ...def };
+      c.el = new Audio(); c.el.preload = 'auto'; c.ok = false;
+      c.el.addEventListener('canplay', () => { c.ok = true; }, { once: true });
+      c.el.addEventListener('error', () => { c.ok = false; console.warn('Voice clip could not load:', c.src); });
+      c.el.src = c.src;
+      return c;
+    });
+  }
+  let clipTimer = 0, playingClip = null;
+  function stopClip() {
+    clearTimeout(clipTimer);
+    if (playingClip) { playingClip.el.pause(); playingClip = null; }
+  }
+  // Returns the text that was "said" (clip text if a clip played), so pop-ups match the audio.
+  function voiceLine(who, text) {
+    const ok = (CLIPS[who] || []).filter(c => c.ok);
+    if (!ok.length) { speak(text, who); return text; }
+    const c = pickArr(ok);
+    if (muted) return c.text || text;
+    stopClip();
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    const start = c.start || 0;
+    c.el.currentTime = start;
+    playingClip = c;
+    c.el.play().then(() => {
+      if (playingClip !== c) { c.el.pause(); return; } // stopped/replaced while starting
+      if (c.end > start) clipTimer = setTimeout(stopClip, (c.end - start) * 1000);
+    }).catch(err => {
+      if (playingClip !== c || muted || (err && err.name === 'AbortError')) return;
+      playingClip = null; speak(c.text || text, who);
+    });
+    return c.text || text;
+  }
+
+  // ---------- DOM ----------
+  const $ = id => document.getElementById(id);
+  const canvas = $('game');
+  const ctx = canvas.getContext('2d');
+  const W = COLS * CELL, H = ROWS * CELL;
+  // Backing store follows the canvas's real on-screen pixels; logical coordinates stay W x H.
+  let res = 1;
+  function fitCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || W;
+    const r = Math.min(MAX_RES, Math.max(1, cssW * dpr / W));
+    const pw = Math.round(W * r), ph = Math.round(H * r);
+    if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+    res = pw / W;
+    ctx.setTransform(res, 0, 0, res, 0, 0);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  }
+  let dprMq = null;
+  function watchDpr() { // zoom / moving to another screen changes devicePixelRatio
+    if (!window.matchMedia) return;
+    try {
+      if (dprMq) dprMq.removeEventListener('change', onDprChange);
+      dprMq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprMq.addEventListener('change', onDprChange);
+    } catch (e) { /* old browser: window resize below still refits */ }
+  }
+  function onDprChange() { fitCanvas(); watchDpr(); }
+  fitCanvas(); watchDpr();
+  if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe(canvas);
+  window.addEventListener('resize', fitCanvas);
+  // SVG sprites rasterised once at the exact device-pixel size, redone when the scale changes.
+  const SPR = {};
+  let sprRes = 0;
+  function sprite(k) {
+    if (sprRes !== res) { for (const key in SPR) delete SPR[key]; sprRes = res; }
+    let c = SPR[k];
+    if (!c) {
+      const img = IMG[k];
+      if (!img.complete || img.naturalWidth === 0) return null;
+      const px = Math.round((CELL + SPRITE_PAD * 2) * res);
+      c = document.createElement('canvas'); c.width = c.height = px;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(img, 0, 0, px, px);
+      SPR[k] = c;
+    }
+    return c;
+  }
+  const rmq = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const reducedMotion = () => !!(rmq && rmq.matches);
+  const ui = {
+    score: $('score'), best: $('best'), muteBtn: $('muteBtn'), pauseBtn: $('pauseBtn'),
+    startOv: $('startOv'), pauseOv: $('pauseOv'), overOv: $('overOv'),
+    deathMsg: $('deathMsg'), fineMsg: $('fineMsg'), pauseFact: $('pauseFact'), overFact: $('overFact'), finalScore: $('finalScore'), nameForm: $('nameForm'),
+    nameInput: $('nameInput'), qualifyHint: $('qualifyHint'), scoreList: $('scoreList')
+  };
+
+  (function buildLegend() {
+    const eat = ['data', 'chip', 'car', 'rocket', 'trump'];
+    const avoid = ['cap', 'fine', 'reg', 'vdl'];
+    const col = (title, cls, keys, label) => {
+      const d = document.createElement('div'); d.className = 'col';
+      d.innerHTML = `<h3 class="${cls}">${title}</h3>`;
+      keys.forEach(k => {
+        const r = document.createElement('div'); r.className = 'row';
+        const im = document.createElement('img'); im.src = IMG[k].src; im.alt = TYPES[k].name;
+        const s = document.createElement('span'); s.textContent = `${TYPES[k].name} ${label(k)}`;
+        r.append(im, s); d.appendChild(r);
+      });
+      return d;
+    };
+    const lg = $('legend');
+    lg.appendChild(col('EAT', 'good', eat, k => `+${TYPES[k].pts}`));
+    lg.appendChild(col('AVOID', 'bad', avoid, k => k === 'cap' ? '−20 & shrink' : '☠'));
+  })();
+
+  // ---------- High scores ----------
+  function loadScores() {
+    try {
+      const v = JSON.parse(store.get(HS_KEY));
+      return Array.isArray(v)
+        ? v.filter(x => x && typeof x.name === 'string' && Number.isFinite(x.score)).slice(0, 10)
+        : [];
+    } catch (e) { return []; }
+  }
+  function saveScores(list) { store.set(HS_KEY, JSON.stringify(list)); }
+  function qualifies(score) {
+    const l = loadScores();
+    return score > 0 && (l.length < 10 || score > l[l.length - 1].score);
+  }
+  function renderScores(highlightIdx = -1) {
+    const l = loadScores();
+    ui.scoreList.innerHTML = '';
+    if (!l.length) { ui.scoreList.innerHTML = '<li class="hint">No high scores yet</li>'; return; }
+    l.forEach((e, i) => {
+      const li = document.createElement('li');
+      if (i === highlightIdx) li.className = 'me';
+      const n = document.createElement('span'); n.textContent = e.name;
+      const p = document.createElement('span'); p.className = 'pts'; p.textContent = e.score;
+      li.append(n, p); ui.scoreList.appendChild(li);
+    });
+  }
+  function updateBest() { const l = loadScores(); ui.best.textContent = l.length ? l[0].score : 0; }
+
+  // ---------- Game state ----------
+  let state = 'start'; // start | play | pause | over
+  let snake, dir, queue, objects, score, pendingGrow, gameTime, acc, popups, flashUntil, saved;
+
+  function reset() {
+    const cx = Math.floor(COLS / 2) - 2, cy = Math.floor(ROWS / 2);
+    snake = [{ x: cx, y: cy }, { x: cx - 1, y: cy }, { x: cx - 2, y: cy }];
+    dir = { x: 1, y: 0 };
+    queue = []; objects = []; popups = [];
+    score = 0; pendingGrow = 0; gameTime = 0; acc = 0; flashUntil = 0; saved = false;
+    savePrev(); clearFx();
+    addObj('data');
+    addObj(pickWeighted(TRAPS), 6);
+    addObj(pickWeighted(TRAPS), 6);
+    ui.score.textContent = 0;
+  }
+  const stepMs = () => Math.max(80, 165 - Math.floor(score / 50) * 5);
+
+  // Snake cells before the last tick, so drawing can glide from there to the current cells.
+  const prevX = [], prevY = [];
+  let prevLen = 0;
+  function savePrev() {
+    for (let i = 0; i < snake.length; i++) { prevX[i] = snake[i].x; prevY[i] = snake[i].y; }
+    prevLen = snake.length;
+  }
+
+  // ---------- Hit effects: particle pool + swallow bulges ----------
+  const MAX_PARTS = 140, MAX_BULGES = 4, BULGE_MS = 55; // ms per body segment
+  const parts = Array.from({ length: MAX_PARTS }, () =>
+    ({ on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 1, color: '', shard: false }));
+  let liveParts = 0;
+  const bulges = []; // gameTime when each swallow started
+  const BURST = {
+    data: ['#22e5ff', '#a5f3fc', '#3b82f6'], chip: ['#39ff88', '#d1ffe4', '#22e5ff'],
+    car: ['#ff4d8d', '#ffe14d', '#22e5ff'], rocket: ['#ff9a3c', '#ffe14d', '#ff2bd6'],
+    trump: ['#ffcf3f', '#fff6c2', '#ff9a3c']
+  };
+  const SHARDS = ['#ff3b6b', '#ff2bd6', '#ffb3c6'];
+  function clearFx() {
+    for (let i = 0; i < MAX_PARTS; i++) parts[i].on = false;
+    liveParts = 0; bulges.length = 0;
+  }
+  function burst(gx, gy, colors, n, shard) {
+    if (reducedMotion()) return;
+    const cx = gx * CELL + CELL / 2, cy = gy * CELL + CELL / 2;
+    for (let j = 0, k = 0; j < MAX_PARTS && k < n; j++) {
+      const p = parts[j];
+      if (p.on) continue;
+      const a = Math.random() * Math.PI * 2, sp = (shard ? 0.14 : 0.08) + Math.random() * 0.16; // px per ms
+      p.on = true; p.x = cx; p.y = cy;
+      p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp - (shard ? 0 : 0.05);
+      p.life = p.max = 450 + Math.random() * 450;
+      p.size = shard ? 2 + Math.random() * 2 : 2 + Math.random() * 3;
+      p.color = colors[k % colors.length]; p.shard = shard;
+      k++; liveParts++;
+    }
+  }
+  function updateParts(dt) {
+    if (!liveParts) return;
+    const drag = Math.pow(0.997, dt);
+    for (let i = 0; i < MAX_PARTS; i++) {
+      const p = parts[i];
+      if (!p.on) continue;
+      p.life -= dt;
+      if (p.life <= 0) { p.on = false; liveParts--; continue; }
+      p.vx *= drag; p.vy = p.vy * drag + 0.0004 * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+  }
+  function swallow() {
+    if (reducedMotion()) return;
+    if (bulges.length >= MAX_BULGES) bulges.shift();
+    bulges.push(gameTime);
+  }
+
+  function freeCell(minDist) {
+    const h = snake[0];
+    for (let t = 0; t < 300; t++) {
+      const x = rand(COLS), y = rand(ROWS);
+      if (snake.some(s => s.x === x && s.y === y)) continue;
+      if (objects.some(o => o.x === x && o.y === y)) continue;
+      if (minDist) {
+        const dx = Math.min(Math.abs(h.x - x), COLS - Math.abs(h.x - x));
+        const dy = Math.min(Math.abs(h.y - y), ROWS - Math.abs(h.y - y));
+        if (dx + dy < minDist) continue;
+      }
+      return { x, y };
+    }
+    return null;
+  }
+  function addObj(type, minDist) {
+    const T = TYPES[type];
+    const md = minDist ?? (T.kind === 'trap' ? 4 : T.kind === 'bad' ? 3 : 0);
+    const c = freeCell(md); if (!c) return;
+    objects.push({ type, x: c.x, y: c.y, born: gameTime, ttl: randRange(T.ttl) });
+  }
+  function spawn() {
+    const count = pred => objects.filter(pred).length;
+    if (!count(o => o.type === 'data')) addObj('data');
+    const traps = count(o => TYPES[o.type].kind === 'trap');
+    const target = Math.min(MAX_TRAPS, 2 + Math.floor(score / 100));
+    if (traps < target && Math.random() < 0.15) addObj(pickWeighted(TRAPS));
+    const bonus = count(o => BONUS.includes(o.type));
+    if (bonus < 2 && Math.random() < 0.035) addObj(pickWeighted(BONUS));
+    if (count(o => o.type === 'cap') < 2 && Math.random() < 0.02) addObj('cap');
+  }
+  function expire() { objects = objects.filter(o => gameTime - o.born < o.ttl); }
+
+  function popup(text, x, y, color) {
+    popups.push({ text, x: x * CELL + CELL / 2, y: y * CELL, color, born: performance.now() });
+  }
+
+  function step() {
+    savePrev();
+    if (queue.length) dir = queue.shift();
+    const h = snake[0];
+    const nx = (h.x + dir.x + COLS) % COLS, ny = (h.y + dir.y + ROWS) % ROWS;
+    const body = pendingGrow > 0 ? snake : snake.slice(0, -1);
+    if (body.some(s => s.x === nx && s.y === ny)) return die('self');
+    snake.unshift({ x: nx, y: ny });
+    if (pendingGrow > 0) pendingGrow--; else snake.pop();
+
+    const i = objects.findIndex(o => o.x === nx && o.y === ny);
+    if (i >= 0) { const o = objects.splice(i, 1)[0]; consume(o); if (state !== 'play') return; }
+    expire();
+    spawn();
+  }
+
+  function consume(o) {
+    const T = TYPES[o.type];
+    sfx(T.sfx);
+    if (T.kind === 'food') {
+      score += T.pts; pendingGrow += T.grow;
+      burst(o.x, o.y, BURST[o.type] || BURST.data, 18, false); swallow();
+      if (T.say) {
+        const line = voiceLine(o.type, pickArr(T.say));
+        popup(`+${T.pts} “${line}”`, o.x, o.y, '#ffe14d');
+      } else {
+        popup(`+${T.pts}`, o.x, o.y, '#39ffb0');
+      }
+    } else if (T.kind === 'bad') {
+      score = Math.max(0, score + T.pts);
+      pendingGrow = 0;
+      flashUntil = performance.now() + 300;
+      popup(`${T.pts}`, o.x, o.y, '#ff3b6b');
+      burst(o.x, o.y, SHARDS, 16, true);
+      if (snake.length - T.shrink < 1) return die('cap');
+      snake.splice(-T.shrink);
+    } else if (T.kind === 'trap') {
+      burst(o.x, o.y, SHARDS, 26, true);
+      return die(o.type);
+    }
+    ui.score.textContent = score;
+  }
+
+  function die(cause) {
+    state = 'over';
+    flashUntil = performance.now() + 400;
+    if (cause === 'self') sfx('boing');
+    sfx('sadTrombone');
+    if (TYPES[cause] && TYPES[cause].say) voiceLine(cause, pickArr(TYPES[cause].say));
+    ui.score.textContent = score;
+    ui.deathMsg.textContent = pickArr(DEATH[cause] || DEATH.self);
+    ui.fineMsg.textContent = cause === 'fine' ? fineText(score) : '';
+    ui.overFact.textContent = 'Fun fact: ' + pickArr(FACTS);
+    ui.finalScore.textContent = score;
+    const q = qualifies(score);
+    ui.nameForm.style.display = q ? 'flex' : 'none';
+    ui.qualifyHint.textContent = q ? 'New high score! Enter your name.' : '';
+    renderScores();
+    setTimeout(() => {
+      if (state !== 'over') return;
+      ui.overOv.classList.add('show');
+      if (q) { ui.nameInput.value = store.get(NAME_KEY) || ''; ui.nameInput.focus(); ui.nameInput.select(); }
+    }, 600);
+  }
+
+  ui.nameForm.addEventListener('submit', e => {
+    e.preventDefault();
+    if (saved) return;
+    const name = (ui.nameInput.value.trim() || 'Anonymous').slice(0, 12);
+    store.set(NAME_KEY, name);
+    const entry = { name, score, date: new Date().toISOString().slice(0, 10) };
+    const list = loadScores(); list.push(entry);
+    list.sort((a, b) => b.score - a.score);
+    const top = list.slice(0, 10); saveScores(top);
+    const idx = top.indexOf(entry);
+    if (idx === 0) sfx('fanfare');
+    saved = true;
+    ui.nameForm.style.display = 'none';
+    ui.qualifyHint.textContent = idx === 0 ? '🏆 #1 – a true monopolist!' : `You placed #${idx + 1}.`;
+    renderScores(idx); updateBest();
+    ui.nameInput.blur();
+  });
+
+  // ---------- Controls ----------
+  function startGame() {
+    audio();
+    stopClip(); cutSfx();
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    reset();
+    ui.startOv.classList.remove('show'); ui.overOv.classList.remove('show'); ui.pauseOv.classList.remove('show');
+    state = 'play'; sfx('start');
+  }
+  function togglePause() {
+    if (state === 'play') { state = 'pause'; ui.pauseFact.textContent = 'Fun fact: ' + pickArr(FACTS); ui.pauseOv.classList.add('show'); }
+    else if (state === 'pause') { state = 'play'; ui.pauseOv.classList.remove('show'); }
+  }
+  function toggleMute() {
+    muted = !muted; store.set(MUTE_KEY, muted ? '1' : '0');
+    ui.muteBtn.textContent = muted ? '🔇' : '🔊';
+    if (muted) { stopClip(); cutSfx(); if (window.speechSynthesis) speechSynthesis.cancel(); }
+  }
+  ui.muteBtn.textContent = muted ? '🔇' : '🔊';
+  ui.muteBtn.addEventListener('click', e => { toggleMute(); e.currentTarget.blur(); });
+  ui.pauseBtn.addEventListener('click', e => { togglePause(); e.currentTarget.blur(); });
+  $('startBtn').addEventListener('click', startGame);
+  $('againBtn').addEventListener('click', startGame);
+
+  function turn(dx, dy) {
+    if (state !== 'play') return;
+    const last = queue.length ? queue[queue.length - 1] : dir;
+    if ((last.x === dx && last.y === dy) || (last.x === -dx && last.y === -dy)) return;
+    if (queue.length < 3) queue.push({ x: dx, y: dy });
+  }
+  const KEYS = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0], W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0]
+  };
+  document.addEventListener('keydown', e => {
+    if (ui.nameForm.contains(e.target)) return; // typing a name or pressing Save must not restart
+    if (KEYS[e.key]) {
+      e.preventDefault();
+      if (state === 'start') startGame();
+      turn(...KEYS[e.key]);
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (state === 'start') startGame(); else togglePause();
+    } else if (e.key === 'Enter') {
+      if (state === 'start' || (state === 'over' && ui.overOv.classList.contains('show'))) { e.preventDefault(); startGame(); }
+    } else if (e.key === 'm' || e.key === 'M') {
+      toggleMute();
+    } else if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+      togglePause();
+    }
+  });
+
+  let touch0 = null;
+  const stage = $('stage');
+  stage.addEventListener('touchstart', e => { const t = e.touches[0]; touch0 = { x: t.clientX, y: t.clientY }; }, { passive: true });
+  stage.addEventListener('touchend', e => {
+    if (!touch0) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch0.x, dy = t.clientY - touch0.y;
+    touch0 = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) turn(Math.sign(dx), 0); else turn(0, Math.sign(dy));
+  }, { passive: true });
+
+  // ---------- Rendering ----------
+  function rrect(x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+  }
+  // Synthwave board (sky gradient + glowing neon grid) is pre-rendered once per backing-store size,
+  // so the expensive shadowBlur never runs per frame.
+  let boardCv = null;
+  function buildBoard() {
+    if (!boardCv) boardCv = document.createElement('canvas');
+    boardCv.width = canvas.width; boardCv.height = canvas.height;
+    const g = boardCv.getContext('2d');
+    g.setTransform(res, 0, 0, res, 0, 0);
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#07021a'); sky.addColorStop(0.55, '#14063a'); sky.addColorStop(1, '#2e0a52');
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    const horizon = g.createRadialGradient(W / 2, H * 1.05, 10, W / 2, H * 1.05, H * 0.75);
+    horizon.addColorStop(0, 'rgba(255,43,214,.28)'); horizon.addColorStop(1, 'rgba(255,43,214,0)');
+    g.fillStyle = horizon; g.fillRect(0, 0, W, H);
+    const lines = g.createLinearGradient(0, 0, 0, H); // violet at the top, hot pink towards the "horizon"
+    lines.addColorStop(0, '#8b5cf6'); lines.addColorStop(1, '#ff2bd6');
+    g.beginPath();
+    for (let i = 0; i <= COLS; i++) { g.moveTo(i * CELL, 0); g.lineTo(i * CELL, H); }
+    for (let i = 0; i <= ROWS; i++) { g.moveTo(0, i * CELL); g.lineTo(W, i * CELL); }
+    g.strokeStyle = lines;
+    g.globalAlpha = 0.35; g.lineWidth = 3; g.shadowColor = '#ff2bd6'; g.shadowBlur = 10 * res; g.stroke();
+    g.shadowBlur = 0; g.globalAlpha = 0.75; g.lineWidth = 1; g.stroke();
+    g.globalAlpha = 1; g.fillStyle = '#9ff6ff'; // small cyan sparks where the lines cross
+    for (let y = 1; y < ROWS; y++) for (let x = 1; x < COLS; x++) { g.fillRect(x * CELL - 1, y * CELL - 1, 2, 2); }
+  }
+  function drawBoard() {
+    if (!boardCv || boardCv.width !== canvas.width || boardCv.height !== canvas.height) buildBoard();
+    ctx.drawImage(boardCv, 0, 0, W, H);
+  }
+  function drawObjects(now) {
+    for (const o of objects) {
+      const left = o.ttl - (gameTime - o.born);
+      const blink = left < 2000 && Math.floor(gameTime / 120) % 2 === 0;
+      const kind = TYPES[o.type].kind;
+      const x = o.x * CELL, y = o.y * CELL;
+      ctx.globalAlpha = blink ? 0.25 : 1;
+      if (kind === 'trap') { // red danger tile with a neon frame (cheap fake glow: wide faint + thin bright stroke)
+        rrect(x + 2, y + 2, CELL - 4, CELL - 4, 5);
+        ctx.fillStyle = 'rgba(255,40,80,.22)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,40,80,.35)'; ctx.lineWidth = 4; ctx.stroke();
+        ctx.strokeStyle = '#ff5577'; ctx.lineWidth = 1.2; ctx.stroke();
+      } else if (BONUS.includes(o.type)) { // pulsing gold neon ring for bonus food
+        const pulse = reducedMotion() ? 0.5 : 0.5 + 0.5 * Math.sin(now / 150);
+        rrect(x + 3, y + 3, CELL - 6, CELL - 6, 12);
+        ctx.fillStyle = `rgba(255,225,77,${0.1 + 0.08 * pulse})`; ctx.fill();
+        ctx.strokeStyle = `rgba(255,225,77,${0.45 + 0.4 * pulse})`; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      const spr = sprite(o.type);
+      if (spr) ctx.drawImage(spr, x - SPRITE_PAD, y - SPRITE_PAD, CELL + SPRITE_PAD * 2, CELL + SPRITE_PAD * 2);
+      if (kind === 'trap') { // red "target lock" corners on top, so traps stay obvious next to food
+        const a = 1, b = CELL - 1, l = 9;
+        ctx.beginPath();
+        ctx.moveTo(x + a, y + a + l); ctx.lineTo(x + a, y + a); ctx.lineTo(x + a + l, y + a);
+        ctx.moveTo(x + b - l, y + a); ctx.lineTo(x + b, y + a); ctx.lineTo(x + b, y + a + l);
+        ctx.moveTo(x + b, y + b - l); ctx.lineTo(x + b, y + b); ctx.lineTo(x + b - l, y + b);
+        ctx.moveTo(x + a + l, y + b); ctx.lineTo(x + a, y + b); ctx.lineTo(x + a, y + b - l);
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(255,40,80,.4)'; ctx.lineWidth = 5; ctx.stroke();
+        ctx.strokeStyle = '#ff6080'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+  // Smooth snake: reused buffers (no per-frame allocations), positions in unwrapped pixels.
+  const PX = [], PY = [], SW = [], PIX = [];
+  const BODY_W = CELL * 0.72, HEAD_R = CELL * 0.47;
+  const PAL = []; // neon tube body, head end (green) -> tail end (cyan-blue)
+  for (let i = 0; i < 16; i++) {
+    const f = i / 15, m = (a, b) => Math.round(a + (b - a) * f);
+    PAL.push(`rgb(${m(18, 8)},${m(217, 120)},${m(138, 190)})`);
+  }
+  const NEON = '#5cffc8';
+  const HEAD_FILL = ctx.createRadialGradient(0, 0, 2, 0, 0, HEAD_R);
+  HEAD_FILL.addColorStop(0, '#c8fff0'); HEAD_FILL.addColorStop(0.5, '#28e6a2'); HEAD_FILL.addColorStop(1, '#0a7f6a');
+  const wrapD = (d, n) => d - n * Math.round(d / n);
+  // Glide each segment from its cell before the last tick to its current cell (t = 0..1).
+  // Neighbours are chained with the shortest wrapped step, so the body never spans the board.
+  function layoutSnake(t, n) {
+    let lfx = 0, lfy = 0, ux = 0, uy = 0;
+    for (let i = 0; i < n; i++) {
+      const j = i < prevLen ? i : prevLen - 1; // a newly grown tail segment stays put
+      const ox = prevX[j], oy = prevY[j];
+      const fx = ox + wrapD(snake[i].x - ox, COLS) * t, fy = oy + wrapD(snake[i].y - oy, ROWS) * t;
+      if (i === 0) { ux = fx; uy = fy; } else { ux += wrapD(fx - lfx, COLS); uy += wrapD(fy - lfy, ROWS); }
+      lfx = fx; lfy = fy;
+      PX[i] = ux * CELL + CELL / 2; PY[i] = uy * CELL + CELL / 2;
+    }
+    const ts = Math.max(1, n - 4), span = n - 1 - ts; // taper the last few segments
+    for (let i = 1; i < n; i++) {
+      const f = span > 0 ? Math.min(1, Math.max(0, (i - ts) / span)) : 0;
+      SW[i] = BODY_W * (1 - 0.4 * f);
+      PIX[i] = n > 2 ? Math.round((i - 1) / (n - 2) * 15) : 0;
+    }
+  }
+  // One stroke per run of equal width/colour; color null = gradient palette. Bulges drawn as fat circles.
+  function bodyPass(n, mul, add, color, dx, dy) {
+    ctx.translate(dx, dy);
+    let i = n - 1;
+    while (i >= 1) {
+      const w = SW[i], pi = PIX[i];
+      ctx.lineWidth = w * mul + add; ctx.strokeStyle = color || PAL[pi];
+      ctx.beginPath(); ctx.moveTo(PX[i], PY[i]);
+      while (i >= 1 && SW[i] === w && (color || PIX[i] === pi)) { ctx.lineTo(PX[i - 1], PY[i - 1]); i--; }
+      ctx.stroke();
+    }
+    for (let b = 0; b < bulges.length; b++) {
+      const s = 0.6 + (gameTime - bulges[b]) / BULGE_MS;
+      if (s >= n - 1) continue;
+      const k = Math.floor(s), f = s - k;
+      const amp = 0.32 * Math.min(1, (n - 1 - s) / 0.8);
+      ctx.fillStyle = color || PAL[PIX[k + 1]];
+      ctx.beginPath();
+      ctx.arc(PX[k] + (PX[k + 1] - PX[k]) * f, PY[k] + (PY[k + 1] - PY[k]) * f,
+        (SW[k + 1] * mul + add) / 2 * (1 + amp), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.translate(-dx, -dy);
+  }
+  function drawHead(ang) {
+    ctx.save();
+    ctx.translate(PX[0], PY[0]); ctx.rotate(ang);
+    ctx.strokeStyle = '#ff2bd6'; ctx.lineWidth = 2; // forked tongue
+    ctx.beginPath();
+    ctx.moveTo(HEAD_R - 3, 0); ctx.lineTo(HEAD_R + 5, 0); ctx.lineTo(HEAD_R + 8, -3);
+    ctx.moveTo(HEAD_R + 5, 0); ctx.lineTo(HEAD_R + 8, 3);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(0,255,170,.16)'; // fake glow halo, no shadowBlur
+    ctx.beginPath(); ctx.ellipse(0, 0, HEAD_R + 6, HEAD_R * 0.9 + 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = HEAD_FILL;
+    ctx.beginPath(); ctx.ellipse(0, 0, HEAD_R, HEAD_R * 0.9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = NEON; ctx.stroke();
+    for (let sgn = -1; sgn <= 1; sgn += 2) { // eyes look where the head is going
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(5, sgn * 7.5, 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff2bd6'; ctx.beginPath(); ctx.arc(7.3, sgn * 7.5, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(7.6, sgn * 7.5, 1.7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(8.2, sgn * 7.5 - 1, 0.9, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawSnake() {
+    const n = snake.length;
+    while (bulges.length && 0.6 + (gameTime - bulges[0]) / BULGE_MS >= n - 1) bulges.shift();
+    const t = state === 'over' ? 1 : Math.min(1, acc / stepMs());
+    layoutSnake(t, n);
+    const ang = n > 1 && (PX[0] !== PX[1] || PY[0] !== PY[1])
+      ? Math.atan2(PY[0] - PY[1], PX[0] - PX[1]) : Math.atan2(dir.y, dir.x);
+    let minX = PX[0], maxX = PX[0], minY = PY[0], maxY = PY[0];
+    for (let i = 1; i < n; i++) {
+      if (PX[i] < minX) minX = PX[i]; else if (PX[i] > maxX) maxX = PX[i];
+      if (PY[i] < minY) minY = PY[i]; else if (PY[i] > maxY) maxY = PY[i];
+    }
+    const m = HEAD_R + 10;
+    minX -= m; maxX += m; minY -= m; maxY += m;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // Draw the copy on the board plus any copies shifted by a board size, so wrapped parts show on the far side.
+    // A long snake can cross the same edge more than once, so the shift range follows the bounding box.
+    for (let oy = Math.ceil(-maxY / H) * H; oy < H - minY; oy += H)
+    for (let ox = Math.ceil(-maxX / W) * W; ox < W - minX; ox += W) {
+      if (minX + ox >= W || maxX + ox <= 0 || minY + oy >= H || maxY + oy <= 0) continue;
+      ctx.translate(ox, oy);
+      bodyPass(n, 1, 14, 'rgba(0,255,170,.09)', 0, 0);            // outer glow (wide faint strokes, no shadowBlur)
+      bodyPass(n, 1, 7, 'rgba(0,255,170,.18)', 0, 0);             // inner glow
+      bodyPass(n, 1, 3, NEON, 0, 0);                              // bright neon edge
+      bodyPass(n, 1, 0, null, 0, 0);                              // gradient body
+      bodyPass(n, 0.28, 0, 'rgba(220,255,245,.5)', -1, -2);       // tube highlight
+      drawHead(ang);
+      ctx.translate(-ox, -oy);
+    }
+  }
+  function drawParts() {
+    if (!liveParts) return;
+    ctx.lineCap = 'butt';
+    ctx.globalCompositeOperation = 'lighter'; // additive blending = free neon glow
+    for (let i = 0; i < MAX_PARTS; i++) {
+      const p = parts[i];
+      if (!p.on) continue;
+      const a = p.life / p.max;
+      ctx.globalAlpha = a;
+      if (p.shard) {
+        ctx.strokeStyle = p.color; ctx.lineWidth = p.size;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 45, p.y - p.vy * 45); ctx.stroke();
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.4 + 0.6 * a), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  function drawPopups(now) {
+    popups = popups.filter(p => now - p.born < 1300);
+    ctx.textAlign = 'center'; ctx.font = 'bold 16px "Courier New", monospace';
+    for (const p of popups) {
+      const t = (now - p.born) / 1300;
+      ctx.globalAlpha = 1 - t;
+      const half = ctx.measureText(p.text).width / 2 + 6;
+      const tx = Math.min(Math.max(p.x, half), W - half);
+      const ty = Math.max(20, p.y - t * 34);
+      ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(10,3,32,.9)'; ctx.strokeText(p.text, tx, ty);
+      ctx.fillStyle = p.color; ctx.fillText(p.text, tx, ty);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function draw(now) {
+    drawBoard();
+    if (snake) { drawObjects(now); drawSnake(); drawParts(); drawPopups(now); }
+    if (now < flashUntil) { ctx.fillStyle = 'rgba(255,43,120,.32)'; ctx.fillRect(0, 0, W, H); }
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(100, now - last); last = now;
+    if (state === 'play') {
+      gameTime += dt; acc += dt;
+      while (state === 'play' && acc >= stepMs()) { acc -= stepMs(); step(); }
+    }
+    if (state === 'play' || state === 'over') updateParts(dt); // frozen while paused, fades out after death
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  reset();
+  updateBest();
+  if (store.ark) {
+    for (const k of [HS_KEY, MUTE_KEY, NAME_KEY]) {
+      try {
+        Promise.resolve(store.ark.hent(k)).then(v => {
+          const t = store.asText(v);
+          if (t == null || k in store.mem) return;
+          store.mem[k] = t;
+          if (k === MUTE_KEY) { muted = t === '1'; ui.muteBtn.textContent = muted ? '🔇' : '🔊'; }
+          if (k === HS_KEY) updateBest();
+        }).catch(() => {});
+      } catch (e) { /* ignore */ }
+    }
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
