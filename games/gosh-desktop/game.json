@@ -1,0 +1,9 @@
+{
+  "titel": "GOSH Desktop",
+  "beskrivelse": "Kollegaen glemte at låse sin pc, og IT har overtaget skærmen. Klar tre opgaver, eller gæt dagens kode, for at komme ud.",
+  "type": "rolig",
+  "tags": ["fjollet", "it-sikkerhed", "skrivebord", "quiz"],
+  "cover": "cover.svg",
+  "styring": "Mus og tastatur",
+  "dato": "2026-11-26"
+}
